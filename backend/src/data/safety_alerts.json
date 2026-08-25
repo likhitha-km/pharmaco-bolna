@@ -1,0 +1,167 @@
+[
+  {
+    "id": "SA001",
+    "drug": "Ranitidine",
+    "alert_type": "Market Withdrawal",
+    "date": "2020-06-26",
+    "summary": "CDSCO directed withdrawal of all ranitidine-containing medicines from Indian markets due to presence of NDMA (N-Nitrosodimethylamine) impurity above acceptable limits. NDMA is classified as a probable human carcinogen.",
+    "severity": "High",
+    "source": "CDSCO Drug Safety Alert 2020",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Patients on ranitidine should consult their doctor for alternative medications such as famotidine or omeprazole."
+  },
+  {
+    "id": "SA002",
+    "drug": "Diacerein",
+    "alert_type": "Restricted Use",
+    "date": "2020-03-12",
+    "summary": "CDSCO restricted diacerein use to patients above 18 years, contraindicated in patients with liver disease, and mandated use of lowest effective dose. Risk of severe diarrhoea and hepatotoxicity identified.",
+    "severity": "Medium",
+    "source": "CDSCO Safety Communication 2020",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Prescribers should reassess patients on diacerein and monitor liver function."
+  },
+  {
+    "id": "SA003",
+    "drug": "Nimesulide (paediatric formulations)",
+    "alert_type": "Ban",
+    "date": "2011-02-10",
+    "summary": "CDSCO banned nimesulide in children below 12 years due to reports of hepatotoxicity and fatal liver failure in children. Adult formulations remain approved for short-term use.",
+    "severity": "High",
+    "source": "CDSCO Drug Safety Alert 2011",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Do not administer nimesulide to children under 12. Use paracetamol or ibuprofen as alternatives."
+  },
+  {
+    "id": "SA004",
+    "drug": "Valsartan",
+    "alert_type": "Recall",
+    "date": "2018-08-15",
+    "summary": "Multiple batches of valsartan recalled globally including India due to NDMA contamination in API manufactured by Zhejiang Huahai Pharmaceutical. Patients to continue medication unless advised by doctor.",
+    "severity": "High",
+    "source": "CDSCO Recall Notice 2018",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Patients should not stop medication abruptly. Contact prescriber to switch to unaffected product."
+  },
+  {
+    "id": "SA005",
+    "drug": "Pioglitazone",
+    "alert_type": "Label Update",
+    "date": "2016-05-20",
+    "summary": "CDSCO mandated updated labelling for pioglitazone warning of increased risk of bladder cancer with long-term use (>1 year). Contraindicated in patients with active or previous bladder cancer.",
+    "severity": "Medium",
+    "source": "CDSCO Drug Safety Communication 2016",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Regular monitoring recommended. Prescribers should discuss risk-benefit with patients on long-term therapy."
+  },
+  {
+    "id": "SA006",
+    "drug": "Domperidone",
+    "alert_type": "Label Update",
+    "date": "2014-08-01",
+    "summary": "CDSCO and EMA flagged risk of cardiac arrhythmias and sudden cardiac death with domperidone, especially at higher doses. Restricted to lowest effective dose for shortest duration.",
+    "severity": "Medium",
+    "source": "CDSCO Safety Review 2014",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Maximum recommended dose: 10mg three times daily for adults. Contraindicated in patients with cardiac conditions."
+  },
+  {
+    "id": "SA007",
+    "drug": "Codeine (paediatric cough syrups)",
+    "alert_type": "Restricted Use",
+    "date": "2016-12-01",
+    "summary": "CDSCO restricted codeine-containing cough syrups in children below 12 years and adolescents with breathing problems, due to risk of life-threatening respiratory depression in CYP2D6 ultra-rapid metabolizers.",
+    "severity": "High",
+    "source": "CDSCO Advisory 2016",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Avoid codeine in children under 12. In adolescents, use with caution and monitor breathing."
+  },
+  {
+    "id": "SA008",
+    "drug": "Fixed-Dose Combinations (FDCs)",
+    "alert_type": "Ban",
+    "date": "2016-03-10",
+    "summary": "CDSCO banned 344 fixed-dose drug combinations that lacked proof of efficacy, safety or therapeutic justification. Included popular combinations for cough, cold, and pain management.",
+    "severity": "High",
+    "source": "Gazette Notification GSR 328(E) 2016",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Patients on banned FDCs should consult their doctors for alternative single-ingredient medicines."
+  },
+  {
+    "id": "SA009",
+    "drug": "Methylergometrine + Oxytocin (FDC)",
+    "alert_type": "Ban",
+    "date": "2018-06-01",
+    "summary": "CDSCO banned the combination of methylergometrine + oxytocin injection. The combination was associated with severe cardiovascular events and uterine rupture when misused.",
+    "severity": "High",
+    "source": "CDSCO Ban Order 2018",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Healthcare facilities should remove this combination from stock and use individual approved formulations."
+  },
+  {
+    "id": "SA010",
+    "drug": "Sibutramine",
+    "alert_type": "Market Withdrawal",
+    "date": "2010-10-08",
+    "summary": "CDSCO withdrew sibutramine (anti-obesity drug) following evidence of increased risk of serious cardiovascular events including non-fatal myocardial infarction and stroke in patients with pre-existing cardiovascular disease.",
+    "severity": "High",
+    "source": "CDSCO Withdrawal Notice 2010",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Patients previously on sibutramine should consult their doctor for safe weight management alternatives."
+  },
+  {
+    "id": "SA011",
+    "drug": "Isotretinoin",
+    "alert_type": "Label Update",
+    "date": "2019-04-15",
+    "summary": "CDSCO mandated pregnancy prevention programme for isotretinoin, requiring mandatory pregnancy testing before and during treatment, and two forms of contraception. Drug causes severe foetal abnormalities.",
+    "severity": "High",
+    "source": "CDSCO Safety Communication 2019",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "All prescribers must enrol patients in the pregnancy prevention programme before prescribing."
+  },
+  {
+    "id": "SA012",
+    "drug": "Valdecoxib",
+    "alert_type": "Market Withdrawal",
+    "date": "2005-04-07",
+    "summary": "Valdecoxib (COX-2 inhibitor) withdrawn from Indian and global markets due to increased risk of cardiovascular events and severe skin reactions including Stevens-Johnson syndrome.",
+    "severity": "High",
+    "source": "CDSCO Withdrawal 2005",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Patients should discontinue use and switch to safer anti-inflammatory alternatives under medical supervision."
+  },
+  {
+    "id": "SA013",
+    "drug": "Aceclofenac + Paracetamol + Rabeprazole (FDC)",
+    "alert_type": "Ban",
+    "date": "2018-08-07",
+    "summary": "This irrational FDC was banned by CDSCO as there was no therapeutic justification for combining these three drugs. No clinical evidence of superior efficacy over individual components.",
+    "severity": "Medium",
+    "source": "CDSCO FDC Ban 2018",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Prescribe individual components separately based on patient clinical need."
+  },
+  {
+    "id": "SA014",
+    "drug": "Fluconazole (high dose, >150mg)",
+    "alert_type": "Label Update",
+    "date": "2016-05-01",
+    "summary": "CDSCO updated labelling for high-dose fluconazole to include risk of QT prolongation and potential cardiac arrhythmias. Also noted teratogenic risk in first trimester pregnancy.",
+    "severity": "Medium",
+    "source": "CDSCO Label Update 2016",
+    "official_link": "https://cdsco.gov.in",
+    "action_required": "Avoid in patients with QT prolongation risk factors. Contraindicated in first trimester pregnancy."
+  },
+  {
+    "id": "SA015",
+    "drug": "Remdesivir (COVID-19 context)",
+    "alert_type": "PvPI Signal",
+    "date": "2021-05-20",
+    "summary": "PvPI detected signal of bradycardia and hypotension with IV remdesivir in COVID-19 patients, particularly at faster infusion rates. Signal detected through ADR reporting from AMCs across India.",
+    "severity": "Medium",
+    "source": "PvPI Signal Detection Report 2021",
+    "official_link": "https://pvpi.nic.in",
+    "action_required": "Administer as slow infusion over 30-120 minutes. Monitor cardiac parameters during administration."
+  }
+]

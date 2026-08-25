@@ -1,0 +1,38 @@
+export const MEDDRA_SOC_MAP = {
+  // System Organ Class mappings for common terms
+  'Dizziness': 'Nervous system disorders',
+  'Nausea': 'Gastrointestinal disorders',
+  'Vomiting': 'Gastrointestinal disorders',
+  'Headache': 'Nervous system disorders',
+  'Rash': 'Skin and subcutaneous tissue disorders',
+  'Fatigue': 'General disorders',
+  'Chest pain': 'Cardiac disorders',
+  'Tremor': 'Nervous system disorders',
+  'Dyspnoea': 'Respiratory disorders',
+  'Abdominal pain': 'Gastrointestinal disorders',
+  'Insomnia': 'Psychiatric disorders',
+  'Palpitations': 'Cardiac disorders',
+  'Oedema': 'General disorders',
+  'Pruritus': 'Skin and subcutaneous tissue disorders',
+  'Dry mouth': 'Gastrointestinal disorders',
+  'Diarrhoea': 'Gastrointestinal disorders',
+  'Constipation': 'Gastrointestinal disorders',
+  'Blurred vision': 'Eye disorders',
+  'Hypertension': 'Vascular disorders',
+  'Hypotension': 'Vascular disorders',
+  'Anaphylaxis': 'Immune system disorders',
+  'Urticaria': 'Skin and subcutaneous tissue disorders',
+  'Alopecia': 'Skin and subcutaneous tissue disorders',
+  'Jaundice': 'Hepatobiliary disorders',
+  'Renal failure': 'Renal and urinary disorders',
+  'Liver failure': 'Hepatobiliary disorders',
+  'Stroke': 'Nervous system disorders',
+  'Myocardial infarction': 'Cardiac disorders',
+};
+
+export const WHO_UMC_CRITERIA = {
+  Certain: 'Event or laboratory test abnormality, with plausible time relationship to drug intake; cannot be explained by disease or other drugs; response to withdrawal plausible; event definitive pharmacologically or phenomenologically; rechallenge satisfactory, if necessary.',
+  Probable: 'Event or laboratory test abnormality, with reasonable time relationship to drug intake; unlikely to be attributed to disease or other drugs; response to withdrawal clinically reasonable; rechallenge not required.',
+  Possible: 'Event or laboratory test abnormality, with a reasonable time relationship to drug intake; could also be explained by disease or other drugs; information on drug withdrawal may be lacking or unclear.',
+  Unlikely: 'Event or laboratory test abnormality, with a temporal relationship to drug intake which makes a contribution unlikely; disease or other drugs provide plausible explanations.',
+};

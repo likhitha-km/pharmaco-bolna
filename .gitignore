@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables / secrets
+.env
+.env.*
+frontend/.env
+backend/.env
+backend/firebase/serviceAccount.json
+
+# OS
+.DS_Store

@@ -1,0 +1,96 @@
+{
+  "conversations": [
+    {
+      "id": "demo_hindi_001",
+      "language": "hi-IN",
+      "userType": "patient",
+      "title": "Metformin ADR — Hindi (Dizzi + Tremor)",
+      "messages": [
+        { "role": "assistant", "content": "नमस्ते! मैं Pharmaco का सहायक हूं। आप जो दवाई ले रहे थे, उसका नाम बताइए।" },
+        { "role": "user", "content": "Metformin 500mg" },
+        { "role": "assistant", "content": "धन्यवाद। Metformin लेने के बाद आपको क्या तकलीफ हुई?" },
+        { "role": "user", "content": "chakkar aaya aur haath kaanpne lage, 2 ghante baad tablet lene ke" },
+        { "role": "assistant", "content": "मैं समझ सकता हूं, यह काफी असुविधाजनक रहा होगा। यह तकलीफ कब शुरू हुई - कौन सी तारीख को?" },
+        { "role": "user", "content": "kal se, 14 July ko" },
+        { "role": "assistant", "content": "ठीक है। क्या आपने दवाई बंद कर दी? और बंद करने के बाद चक्कर कम हुआ?" },
+        { "role": "user", "content": "haan, doctor ne kal hi band kara di. chakkar thoda kam hua lekin haath abhi bhi thoda kaanpte hain" },
+        { "role": "assistant", "content": "ये जानकारी बहुत उपयोगी है। Metformin आप किसलिए ले रहे थे — diabetes के लिए?" },
+        { "role": "user", "content": "haan, type 2 diabetes ke liye. subah khane ke saath 1 tablet" },
+        { "role": "assistant", "content": "बहुत अच्छा। क्या आपकी कोई और बीमारी है, या आप कोई और दवाई भी ले रहे हैं?" },
+        { "role": "user", "content": "BP ki dawa bhi hai, Amlodipine 5mg. aur koi nahi" },
+        { "role": "assistant", "content": "आपकी उम्र और लिंग बता सकते हैं? यह PvPI रिपोर्ट के लिए जरूरी है।" },
+        { "role": "user", "content": "52 saal, purush" },
+        { "role": "assistant", "content": "धन्यवाद! आपकी रिपोर्ट अब तैयार है। REPORT_READY" }
+      ],
+      "extractedData": {
+        "suspected_medicines": [{ "name": "Metformin", "dosage": "500mg", "frequency": "Once daily", "route": "Oral", "confidence": 0.95 }],
+        "adverse_reactions": [
+          { "original_text": "chakkar aaya aur haath kaanpne lage", "english_translation": "Dizziness and hand tremors", "onset_date": "2025-07-14", "severity": "mild", "confidence": 0.88 }
+        ],
+        "patient": { "age_group": "50-59", "gender": "Male" },
+        "causality_signals": { "dechallenge": "positive" },
+        "clinical_context": { "reason_for_taking": "Type 2 Diabetes", "concomitant_medications": ["Amlodipine 5mg"] }
+      }
+    },
+    {
+      "id": "demo_tamil_001",
+      "language": "ta-IN",
+      "userType": "patient",
+      "title": "Amoxicillin ADR — Tamil (Rash + Itching)",
+      "messages": [
+        { "role": "assistant", "content": "வணக்கம்! நான் Pharmaco உதவியாளர். நீங்கள் எந்த மருந்து எடுத்தீர்கள்?" },
+        { "role": "user", "content": "Amoxicillin 500mg மூன்று நாட்கள் எடுத்தேன்" },
+        { "role": "assistant", "content": "நன்றி. Amoxicillin எடுத்த பிறகு உங்களுக்கு என்ன பிரச்சனை ஆனது?" },
+        { "role": "user", "content": "உடல் முழுவதும் தடிப்பு வந்தது, மிகவும் அரிப்பு இருந்தது" },
+        { "role": "assistant", "content": "அது மிகவும் கஷ்டமாக இருந்திருக்கும். இந்த தடிப்பு எப்போது ஆரம்பித்தது?" },
+        { "role": "user", "content": "மருந்து ஆரம்பித்த 2வது நாளில், July 12 அன்று" },
+        { "role": "assistant", "content": "Amoxicillin நிறுத்திய பிறகு தடிப்பு குறைந்ததா?" },
+        { "role": "user", "content": "ஆமா, 3 நாளில் குறைந்தது" },
+        { "role": "assistant", "content": "Amoxicillin ஏன் எடுத்தீர்கள்? உங்கள் தொண்டை வலி அல்லது வேறு ஏதாவதா?" },
+        { "role": "user", "content": "தொண்டை வலிக்கு doctor எழுதி கொடுத்தார்கள்" },
+        { "role": "assistant", "content": "உங்கள் வயது எவ்வளவு?" },
+        { "role": "user", "content": "28 வயது, பெண்" },
+        { "role": "assistant", "content": "நன்றி! உங்கள் முக்கிய தகவல்கள் சேகரிக்கப்பட்டன. உங்கள் அறிக்கை தயார். REPORT_READY" }
+      ],
+      "extractedData": {
+        "suspected_medicines": [{ "name": "Amoxicillin", "dosage": "500mg", "frequency": "Not specified", "route": "Oral", "confidence": 0.92 }],
+        "adverse_reactions": [
+          { "original_text": "உடல் முழுவதும் தடிப்பு வந்தது, மிகவும் அரிப்பு இருந்தது", "english_translation": "Rash all over body with severe itching", "onset_date": "2025-07-12", "severity": "moderate", "confidence": 0.90 }
+        ],
+        "patient": { "age_group": "18-29", "gender": "Female" },
+        "causality_signals": { "dechallenge": "positive" },
+        "clinical_context": { "reason_for_taking": "Throat pain (pharyngitis)" }
+      }
+    },
+    {
+      "id": "demo_english_001",
+      "language": "en-IN",
+      "userType": "healthcare_professional",
+      "title": "Atorvastatin ADR — English (Myalgia + CK elevation)",
+      "messages": [
+        { "role": "assistant", "content": "Hello! I'm Pharmaco's pharmacovigilance assistant. Please tell me which medicine you're reporting an adverse reaction for." },
+        { "role": "user", "content": "I want to report an ADR for Atorvastatin 40mg in one of my patients." },
+        { "role": "assistant", "content": "Thank you, Doctor. What adverse event did your patient experience?" },
+        { "role": "user", "content": "Patient presented with severe myalgia and weakness in both lower limbs. CK was 3200 U/L on admission." },
+        { "role": "assistant", "content": "Noted — significant CK elevation with myalgia. When did symptoms begin relative to starting atorvastatin?" },
+        { "role": "user", "content": "Patient had been on atorvastatin for 8 months. Symptoms started about 3 weeks ago, around 25th June." },
+        { "role": "assistant", "content": "Was atorvastatin discontinued, and if so, did symptoms improve (dechallenge)?" },
+        { "role": "user", "content": "Yes, drug was stopped. CK normalised and myalgia resolved over 2 weeks. Positive dechallenge." },
+        { "role": "assistant", "content": "Was the patient on any concomitant medications, particularly fibrates or CYP3A4 inhibitors?" },
+        { "role": "user", "content": "Patient was also on Fenofibrate 145mg for dyslipidaemia — possible drug interaction." },
+        { "role": "assistant", "content": "Patient demographics — age, gender, any relevant comorbidities?" },
+        { "role": "user", "content": "62-year-old male, known diabetic, mild CKD (eGFR 55). No history of prior statin intolerance." },
+        { "role": "assistant", "content": "Report is complete with strong causality signals. REPORT_READY" }
+      ],
+      "extractedData": {
+        "suspected_medicines": [{ "name": "Atorvastatin", "dosage": "40mg", "frequency": "Daily", "route": "Oral", "confidence": 0.98 }],
+        "adverse_reactions": [
+          { "original_text": "Severe myalgia and weakness in both lower limbs, CK 3200 U/L", "english_translation": "Myalgia with rhabdomyolysis", "onset_date": "2025-06-25", "severity": "severe", "confidence": 0.95 }
+        ],
+        "patient": { "age_group": "60-69", "gender": "Male" },
+        "causality_signals": { "dechallenge": "positive", "temporal_relationship": true },
+        "clinical_context": { "reason_for_taking": "Dyslipidaemia", "medical_history": "Type 2 Diabetes, CKD (eGFR 55)", "concomitant_medications": ["Fenofibrate 145mg"], "outcome": "Recovered after discontinuation" }
+      }
+    }
+  ]
+}
