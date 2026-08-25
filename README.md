@@ -2,8 +2,6 @@
 
 Pharmaco is an AI-powered platform designed to make reporting adverse drug reactions (ADRs) as simple as having a conversation in your own language. It aims to increase ADR reporting in India by removing language barriers, jargon, and complex forms.
 
-Built for the **IEEE WIE Big Idea Pitch** and **AI India Impact Festival**.
-
 ## Features
 
 - **Conversational Reporting:** Speak or type in your native Indian language (Hindi, Tamil, Kannada, Marathi, Bengali, Telugu, Gujarati, Malayalam, English).
