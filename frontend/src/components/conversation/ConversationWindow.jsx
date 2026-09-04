@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, Camera, X } from 'lucide-react';
+import { ArrowRight, X } from 'lucide-react';
 import { ChatBubble } from './ChatBubble.jsx';
 import { VoiceInput } from './VoiceInput.jsx';
 import { EmergencyAlert } from '../common/EmergencyAlert.jsx';
@@ -139,10 +139,6 @@ export function ConversationWindow({ onReportReady, language, userType }) {
           >
             <ArrowRight size={20} aria-hidden="true" />
           </button>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
-          <Camera size={14} color="var(--color-text-muted)" aria-hidden="true" />
-          <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Upload a prescription image to help the assistant understand your report.</span>
         </div>
       </div>
     </div>

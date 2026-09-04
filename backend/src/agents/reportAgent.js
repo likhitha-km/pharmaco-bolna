@@ -1,5 +1,6 @@
 import { callGroq, MODEL_SMART } from '../services/nebiusService.js';
 import { v4 as uuidv4 } from 'uuid';
+import { extractJson } from '../utils/parseJson.js';
 
 const SYSTEM_PROMPT = `You are a CDSCO pharmacovigilance officer generating Individual Case Safety Reports (ICSR) for India's Pharmacovigilance Programme of India (PvPI). Generate reports in compliance with ICSR reporting standards. Produce a professional, clinically appropriate narrative summary and all structured ICSR fields. Respond ONLY with valid JSON.`;
 
@@ -75,8 +76,8 @@ export async function generateICSR(extractedData, meddraData, completenessData) 
       0.1
     );
 
-    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    const report = JSON.parse(cleaned);
+    const report = extractJson(raw);
+    if (!report) throw new Error('Report generation model returned no parseable JSON');
 
     // Ensure report_id and timestamp are set
     report.report_id = reportId;

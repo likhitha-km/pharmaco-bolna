@@ -1,4 +1,5 @@
 import { callGroq, MODEL_SMART } from '../services/nebiusService.js';
+import { extractJson } from '../utils/parseJson.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // System prompt — the single source of conversation intelligence.
@@ -208,25 +209,13 @@ function countOptionalFields(data) {
 // Parse the LLM's JSON response safely
 // ─────────────────────────────────────────────────────────────────────────────
 function parseLLMResponse(raw) {
-  // Strip any accidental markdown code fences
-  const cleaned = raw
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/```\s*$/i, '')
-    .trim();
-
-  try {
-    return JSON.parse(cleaned);
-  } catch (_) {
-    // If JSON parse fails, treat the whole thing as the assistant message
-    return {
-      assistant_message: cleaned || "I'm here to help. Could you tell me more about what happened?",
-      fields: {},
-      missing_fields: [],
-      report_ready: false,
-      emergency: false,
-    };
+  // Recover the JSON object even if the model added stray prose around it
+  // (this used to leak the raw JSON into the chat as the visible message).
+  const parsed = extractJson(raw);
+  if (parsed && typeof parsed === 'object' && typeof parsed.assistant_message === 'string') {
+    return parsed;
   }
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -264,18 +253,37 @@ export async function getNextMessage(
     .map(({ role, content }) => ({ role, content }));
 
   try {
-    const raw = await callGroq(
-      systemPrompt,
-      cappedHistory,
-      MODEL_SMART,
-      600,   // max tokens — enough for a friendly reply + JSON overhead
-      0.55   // temperature — warmer than extraction but not hallucination-prone
-    );
+    let raw = await callGroq(systemPrompt, cappedHistory, MODEL_SMART, 600, 0.55);
+    let parsed = parseLLMResponse(raw);
 
-    const parsed = parseLLMResponse(raw);
+    // The model occasionally replies with plain prose instead of the
+    // mandated JSON (more likely on short "acknowledge a correction" turns).
+    // One low-temperature retry recovers most of these before we fall back
+    // to a generic reply — worth the latency for how much it improves
+    // demo reliability.
+    if (!parsed) {
+      raw = await callGroq(systemPrompt, cappedHistory, MODEL_SMART, 600, 0.2);
+      parsed = parseLLMResponse(raw);
+    }
+
+    if (!parsed) {
+      // The model sometimes ignores the JSON-only instruction on short
+      // "acknowledge a correction" turns and replies in plain prose
+      // instead. That's still a real, on-topic, safe reply from the model
+      // — far better to show it than a generic apology. We only refuse to
+      // show text that looks like a broken/leaked JSON object (that's the
+      // "raw JSON dumped into chat" bug this whole function guards against).
+      const looksLikeBrokenJson = /"assistant_message"\s*:|^\s*[{[]/.test(raw || '');
+      if (raw && raw.trim() && !looksLikeBrokenJson) {
+        const message = raw.replace(/```[a-z]*\s*/gi, '').replace(/```/g, '').trim();
+        return { message, isEmergency: false, isReportReady: false, newFields: {} };
+      }
+      console.error('[ConversationAgent] Model did not return parseable JSON after retry. Raw:', raw?.slice(0, 500));
+      return { message: buildFallback(language), isEmergency: false, isReportReady: false, newFields: {} };
+    }
 
     // Strip any accidental sentinel strings in case old prompts leak through
-    let message = (parsed.assistant_message || buildFallback(language))
+    const message = (parsed.assistant_message || buildFallback(language))
       .replace(/REPORT_READY/g, '')
       .replace(/EMERGENCY_TRIAGE/g, '')
       .trim();

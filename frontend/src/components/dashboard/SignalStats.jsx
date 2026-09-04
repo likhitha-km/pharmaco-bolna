@@ -22,6 +22,12 @@ export function SignalStats({ signals = [] }) {
         ))}
       </div>
 
+      {signals.length === 0 && (
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)', padding: '16px 0', textAlign: 'center' }}>
+          No active signals yet — a drug/reaction pair appears here once it has been reported at least 3 times.
+        </p>
+      )}
+
       {/* Signal table */}
       {signals.length > 0 && (
         <div style={{ overflowX: 'auto' }}>

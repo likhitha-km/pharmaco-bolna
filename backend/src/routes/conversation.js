@@ -7,7 +7,7 @@ import { mapToMedDRA } from '../agents/mappingAgent.js';
 import { assessCompleteness } from '../agents/completenessAgent.js';
 import { triageMessage } from '../agents/triageAgent.js';
 import { generateICSR } from '../agents/reportAgent.js';
-import { saveConversation, updateConversation, getConversation, saveReport, updateDrugSignals } from '../services/firebaseService.js';
+import { saveConversation, updateConversation, getConversation, saveReport, updateDrugSignals, getReportsByConversationId } from '../services/firebaseService.js';
 import { transcribeAudio } from '../services/sarvamService.js';
 import { WELCOME_MESSAGES } from '../prompts/conversationPrompts.js';
 import { mergeExtractedData, mergeNewFields } from '../utils/extractedData.js';
@@ -130,8 +130,14 @@ router.post('/message', async (req, res) => {
     let completenessScore = null;
     let meddraData = null;
 
-    // 8. Full pipeline when report is ready
-    if (agentResponse.isReportReady) {
+    // 8. Full pipeline when report is ready.
+    //    Once a conversation has reached "report_ready" at least once, keep
+    //    re-running this on every later turn too — otherwise a correction
+    //    made after that point (e.g. "actually it's once a day, not twice")
+    //    would update extractedData but leave the stale MedDRA mapping /
+    //    completeness score behind, breaking canonical-state sync.
+    const alreadyReady = conversation.status === 'report_ready';
+    if (agentResponse.isReportReady || alreadyReady) {
       try {
         const fullHistory = finalMessages.map(m => ({ role: m.role, content: m.content }));
         const fullExtraction = await extractFromConversation(fullHistory);
@@ -159,7 +165,7 @@ router.post('/message', async (req, res) => {
     res.json({
       message: agentResponse.message,
       isEmergency: false,
-      isReportReady: agentResponse.isReportReady,
+      isReportReady: agentResponse.isReportReady || alreadyReady,
       extractedData,
       meddraData,
       completenessScore,
@@ -281,6 +287,14 @@ router.post('/end', async (req, res) => {
     const completeness = await assessCompleteness(extractedData);
     const icsr = await generateICSR(extractedData, meddraData, completeness);
 
+    // Reuse the existing draft's report id (if one exists for this
+    // conversation) instead of always minting a new one — otherwise
+    // submitting leaves an orphaned duplicate "draft" document behind
+    // for the same report, and My Reports shows it twice.
+    const existingReports = await getReportsByConversationId(conversationId, 20);
+    const existingDraft = existingReports.find((r) => r.status === 'draft');
+    if (existingDraft) icsr.report_id = existingDraft.id;
+
     const reportId = await saveReport({
       id: icsr.report_id,
       conversationId,
@@ -292,6 +306,7 @@ router.post('/end', async (req, res) => {
       completenessScore: completeness.completeness_score,
       status: 'submitted',
       isAnonymous: conversation.isAnonymous,
+      createdAt: existingDraft?.createdAt,
     });
 
     const drugNames = extractedData.suspected_medicines?.map(m => m.name) || [];
@@ -305,6 +320,91 @@ router.post('/end', async (req, res) => {
   } catch (error) {
     console.error('[POST /end]', error);
     res.status(500).json({ error: 'Failed to generate report', message: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PUT /api/conversation/:conversationId/fields
+// Inline correction — the user directly edits a field on the Review screen
+// instead of re-chatting. This is the single write path for manual edits so
+// the conversation doc (source of truth), its MedDRA mapping/completeness,
+// and any existing draft report snapshot all stay in sync.
+// ─────────────────────────────────────────────────────────────────────────────
+router.put('/:conversationId/fields', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { extractedData } = req.body;
+
+    if (!extractedData) {
+      return res.status(400).json({ error: 'extractedData is required' });
+    }
+
+    const conversation = await getConversation(conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+    // Normalize through the same merge helper used elsewhere so the shape
+    // is always consistent — merge onto an empty base rather than trusting
+    // the client's shape directly.
+    const normalized = mergeExtractedData(null, extractedData);
+    const meddraData = await mapToMedDRA(normalized);
+    const completeness = await assessCompleteness(normalized);
+
+    await updateConversation(conversationId, {
+      extractedData: normalized,
+      meddraData,
+      completenessScore: completeness.completeness_score,
+    });
+
+    // Keep an existing draft report snapshot canonical too.
+    const existingReports = await getReportsByConversationId(conversationId, 20);
+    const existingDraft = existingReports.find((r) => r.status === 'draft');
+    if (existingDraft) {
+      await saveReport({
+        ...existingDraft,
+        extractedData: normalized,
+        completenessScore: completeness.completeness_score,
+        title: normalized.suspected_medicines?.[0]?.name || existingDraft.title,
+        reaction: normalized.adverse_reactions?.[0]?.original_text || existingDraft.reaction,
+      });
+    }
+
+    res.json({ extractedData: normalized, meddraData, completenessScore: completeness.completeness_score });
+  } catch (error) {
+    console.error('[PUT /:conversationId/fields]', error);
+    res.status(500).json({ error: 'Failed to save your edits', message: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/conversation/:conversationId/generate-draft
+// Generates a professional ICSR draft from the canonical structured state
+// WITHOUT submitting — the user stays in control and can still edit or
+// discard it. Never fabricates values for fields that are still unknown;
+// generateICSR only fills what's in extractedData/meddraData already.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/:conversationId/generate-draft', async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const conversation = await getConversation(conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+
+    const extractedData = conversation.extractedData;
+    if (!extractedData) {
+      return res.status(400).json({ error: 'No information has been collected yet for this report.' });
+    }
+
+    const meddraData = conversation.meddraData || (await mapToMedDRA(extractedData));
+    const completeness =
+      conversation.completenessScore != null
+        ? { completeness_score: conversation.completenessScore }
+        : await assessCompleteness(extractedData);
+
+    const icsr = await generateICSR(extractedData, meddraData, completeness);
+
+    res.json({ icsr, extractedData, meddraData, completenessScore: completeness.completeness_score });
+  } catch (error) {
+    console.error('[POST /:conversationId/generate-draft]', error);
+    res.status(500).json({ error: 'Failed to generate draft report', message: error.message });
   }
 });
 

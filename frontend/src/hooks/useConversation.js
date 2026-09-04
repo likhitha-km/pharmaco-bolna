@@ -2,6 +2,20 @@ import { useCallback, useRef } from 'react';
 import { useConversationContext } from '../context/ConversationContext.jsx';
 import { conversationApi, reportApi } from '../utils/api.js';
 
+// Persists which conversation is currently "in progress" so a page refresh
+// on /report doesn't silently start a brand-new conversation and orphan the
+// one the user was mid-way through. Cleared once a report is submitted or
+// the user explicitly starts fresh.
+export const ACTIVE_CONVERSATION_KEY = 'pharmaco_active_conversation_id';
+
+function rememberActiveConversation(id) {
+  try { localStorage.setItem(ACTIVE_CONVERSATION_KEY, id); } catch { /* ignore */ }
+}
+
+function forgetActiveConversation() {
+  try { localStorage.removeItem(ACTIVE_CONVERSATION_KEY); } catch { /* ignore */ }
+}
+
 export function useConversation() {
   const { state, dispatch } = useConversationContext();
   const autoDraftedRef = useRef(new Set());
@@ -20,6 +34,7 @@ export function useConversation() {
         type: 'ADD_MESSAGE',
         payload: { role: 'assistant', content: data.welcomeMessage, timestamp: new Date().toISOString() },
       });
+      rememberActiveConversation(data.conversationId);
       return data.conversationId;
     } catch (err) {
       console.error('[useConversation] startConversation error:', err);
@@ -38,7 +53,10 @@ export function useConversation() {
 
   const saveDraftAutomatically = useCallback(async (conversationId, extractedData, completenessScore, language, isAnonymous) => {
     if (!conversationId || !extractedData) return null;
-    const key = `${conversationId}:${JSON.stringify(extractedData?.suspected_medicines || [])}:${JSON.stringify(extractedData?.adverse_reactions || [])}`;
+    // Key on the full structured payload (not just medicine/reaction) so any
+    // corrected field — outcome, concomitant meds, dosage, etc. — triggers a
+    // fresh draft save rather than silently going stale.
+    const key = `${conversationId}:${JSON.stringify(extractedData)}`;
     if (autoDraftedRef.current.has(key)) return null;
 
     autoDraftedRef.current.add(key);
@@ -84,8 +102,13 @@ export function useConversation() {
       if (data.extractedData) dispatch({ type: 'SET_EXTRACTED_DATA', payload: data.extractedData });
       if (data.meddraData) dispatch({ type: 'SET_MEDDRA_DATA', payload: data.meddraData });
       if (data.completenessScore != null) dispatch({ type: 'SET_COMPLETENESS', payload: data.completenessScore });
-      if (data.isReportReady) {
-        dispatch({ type: 'SET_REPORT_READY', payload: true });
+      if (data.isReportReady) dispatch({ type: 'SET_REPORT_READY', payload: true });
+
+      // Once a report has reached "ready" at least once, keep the saved
+      // draft in sync with every later correction too (not just the turn
+      // that first flips report-ready) — this is what keeps My Reports and
+      // the review screen from going stale after "actually, it's X not Y".
+      if (data.isReportReady || state.isReportReady) {
         await saveDraftAutomatically(state.conversationId, data.extractedData || state.extractedData, data.completenessScore ?? state.completenessScore, state.language, state.isAnonymous);
       }
     } catch (err) {
@@ -93,7 +116,7 @@ export function useConversation() {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [state.conversationId, state.userType, state.language, state.messages, state.extractedData, state.completenessScore, state.isAnonymous, dispatch, saveDraftAutomatically]);
+  }, [state.conversationId, state.userType, state.language, state.messages, state.extractedData, state.completenessScore, state.isAnonymous, state.isReportReady, dispatch, saveDraftAutomatically]);
 
   const sendVoice = useCallback(async (audioBlob) => {
     if (!state.conversationId) return;
@@ -114,9 +137,9 @@ export function useConversation() {
       
       dispatch({ type: 'UPDATE_VOICE_RESPONSE', payload: { transcript: data.transcript, message: data.message } });
       
-      if (data.isReportReady) {
-        dispatch({ type: 'SET_REPORT_READY', payload: true });
-        await saveDraftAutomatically(state.conversationId, data.extractedData || state.extractedData, state.completenessScore, state.language, state.isAnonymous);
+      if (data.isReportReady) dispatch({ type: 'SET_REPORT_READY', payload: true });
+      if (data.isReportReady || state.isReportReady) {
+        await saveDraftAutomatically(state.conversationId, data.extractedData || state.extractedData, data.completenessScore ?? state.completenessScore, state.language, state.isAnonymous);
       }
     } catch (err) {
       console.error('[useConversation] sendVoice error:', err);
@@ -124,13 +147,14 @@ export function useConversation() {
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [state.conversationId, state.language, state.extractedData, state.completenessScore, state.isAnonymous, dispatch, saveDraftAutomatically]);
+  }, [state.conversationId, state.language, state.extractedData, state.completenessScore, state.isAnonymous, state.isReportReady, dispatch, saveDraftAutomatically]);
 
   const endConversation = useCallback(async () => {
     if (!state.conversationId) return null;
     dispatch({ type: 'SET_LOADING', payload: true });
     try {
       const { data } = await conversationApi.end(state.conversationId);
+      forgetActiveConversation();
       return data;
     } catch (err) {
       console.error('[useConversation] endConversation error:', err);
@@ -153,7 +177,10 @@ export function useConversation() {
       if (data.language) dispatch({ type: 'SET_LANGUAGE', payload: data.language });
       if (data.userType) dispatch({ type: 'SET_USER_TYPE', payload: data.userType });
       if (data.isAnonymous != null) dispatch({ type: 'SET_ANONYMOUS', payload: data.isAnonymous });
-      dispatch({ type: 'SET_REPORT_READY', payload: data.status === 'report_ready' || !!data.extractedData });
+      // Only the server's persisted "report_ready" status counts — having
+      // *some* extractedData mid-conversation does not mean the report is
+      // actually ready (this used to trigger premature draft autosaves).
+      dispatch({ type: 'SET_REPORT_READY', payload: data.status === 'report_ready' || data.status === 'completed' });
       return data;
     } catch (err) {
       console.error('[useConversation] hydrateConversation error:', err);
@@ -163,7 +190,35 @@ export function useConversation() {
     }
   }, [dispatch]);
 
+  // Manual correction on the Review screen — bypasses the chat entirely but
+  // writes through the same canonical conversation record on the backend,
+  // and re-syncs MedDRA mapping + completeness so nothing goes stale.
+  const saveFieldEdits = useCallback(async (extractedData) => {
+    if (!state.conversationId) return null;
+    try {
+      const { data } = await conversationApi.updateFields(state.conversationId, extractedData);
+      dispatch({ type: 'SET_EXTRACTED_DATA', payload: data.extractedData });
+      if (data.meddraData) dispatch({ type: 'SET_MEDDRA_DATA', payload: data.meddraData });
+      if (data.completenessScore != null) dispatch({ type: 'SET_COMPLETENESS', payload: data.completenessScore });
+      return data;
+    } catch (err) {
+      console.error('[useConversation] saveFieldEdits error:', err);
+      throw err;
+    }
+  }, [state.conversationId, dispatch]);
+
+  // Generates a professional ICSR draft from whatever has actually been
+  // collected so far — an explicit, user-initiated step, never automatic.
+  const generateDraftReport = useCallback(async () => {
+    if (!state.conversationId) return null;
+    const { data } = await conversationApi.generateDraft(state.conversationId);
+    if (data.meddraData) dispatch({ type: 'SET_MEDDRA_DATA', payload: data.meddraData });
+    if (data.completenessScore != null) dispatch({ type: 'SET_COMPLETENESS', payload: data.completenessScore });
+    return data;
+  }, [state.conversationId, dispatch]);
+
   const resetConversation = useCallback(() => {
+    forgetActiveConversation();
     dispatch({ type: 'RESET' });
   }, [dispatch]);
 
@@ -188,6 +243,8 @@ export function useConversation() {
     hydrateConversation,
     resetConversation,
     saveDraftAutomatically,
+    saveFieldEdits,
+    generateDraftReport,
     changeLanguage,
     changeUserType,
     changeAnonymous,

@@ -72,11 +72,10 @@ router.get('/profile/:drugName', async (req, res) => {
     // Get signals from database
     const signals = await getDrugSignals(drugName);
 
-    // Build ADR trend data (mock for demo)
-    const trendData = Array.from({ length: 12 }, (_, i) => ({
-      month: new Date(2025, i, 1).toLocaleString('default', { month: 'short' }),
-      reports: Math.floor(Math.random() * 20) + 5,
-    }));
+    // Per-drug monthly trend requires timestamped report history, which
+    // isn't tracked per-drug yet — return an empty series rather than
+    // fabricating one. The frontend shows an honest "not enough data" state.
+    const trendData = [];
 
     res.json({
       drug,

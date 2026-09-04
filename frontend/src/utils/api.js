@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getAnonymousId } from './anonymousId.js';
 
 const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000/api';
 
@@ -15,7 +16,10 @@ api.interceptors.request.use((config) => {
   const userEmail = localStorage.getItem('pharmaco_user_email');
 
   if (token) config.headers.Authorization = `Bearer ${token}`;
-  if (userId) config.headers['X-User-Id'] = userId;
+  // Always send a stable identifier so report ownership can be enforced —
+  // the logged-in uid when signed in, otherwise a real per-browser
+  // anonymous id (never the shared literal "anonymous").
+  config.headers['X-User-Id'] = userId || getAnonymousId();
   if (userEmail) config.headers['X-User-Email'] = userEmail;
 
   return config;
@@ -39,6 +43,8 @@ export const conversationApi = {
   voice: (formData) => api.post('/conversation/voice', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   end: (conversationId) => api.post('/conversation/end', { conversationId }),
   history: (conversationId) => api.get(`/conversation/history/${conversationId}`),
+  updateFields: (conversationId, extractedData) => api.put(`/conversation/${conversationId}/fields`, { extractedData }),
+  generateDraft: (conversationId) => api.post(`/conversation/${conversationId}/generate-draft`),
 };
 
 // ---- Report API ----
@@ -49,7 +55,6 @@ export const reportApi = {
   get: (id) => api.get(`/report/${id}`),
   getICSR: (id) => api.get(`/report/${id}/icsr`),
   followup: (id, message) => api.post(`/report/${id}/followup`, { message }),
-  export: (id) => api.post(`/report/${id}/export`),
   delete: (id) => api.delete(`/report/${id}`),
 };
 

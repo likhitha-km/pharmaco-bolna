@@ -65,11 +65,10 @@ function normalizeUserId(userId) {
 }
 
 function shouldIncludeReportForUser(report, userId) {
+  // Strict ownership check — a report is only visible to the exact user
+  // (or anonymous device id) that created it. No cross-user fallback.
   if (!report) return false;
-  const reportUserId = normalizeUserId(report.userId);
-  if (reportUserId === userId) return true;
-  if (userId === 'anonymous') return false;
-  return ['anonymous', 'demo-user', 'demo-user-001'].includes(reportUserId) && ['draft', 'submitted'].includes(report.status);
+  return normalizeUserId(report.userId) === normalizeUserId(userId);
 }
 
 function sortReportsByDate(reports) {
@@ -80,26 +79,56 @@ function dedupeReports(reports) {
   return reports.filter((report, index, arr) => arr.findIndex((item) => item.id === report.id) === index);
 }
 
+/**
+ * Firestore rejects any field whose value is `undefined` (e.g. an optional
+ * field the caller never provided, like `icsr` before a draft has been
+ * AI-generated). That used to make the whole document write throw, and the
+ * write silently fell back to the in-memory store even though nothing was
+ * actually wrong with the data — it just needed to be dropped, not sent.
+ * This recursively strips `undefined` keys/array entries so a write only
+ * ever fails for a genuine problem, not a missing-optional-field.
+ */
+function sanitizeForFirestore(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== undefined).map((item) => sanitizeForFirestore(item));
+  }
+  if (value !== null && typeof value === 'object') {
+    const result = {};
+    for (const [key, val] of Object.entries(value)) {
+      if (val === undefined) continue;
+      result[key] = sanitizeForFirestore(val);
+    }
+    return result;
+  }
+  return value;
+}
+
 // ---- CONVERSATIONS ----
 
 export async function saveConversation(data) {
   const id = data.id || genId();
-  const doc = { ...data, id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+  const doc = sanitizeForFirestore({ ...data, id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
+  memStore.conversations[id] = doc;
   if (db) {
-    await db.collection('conversations').doc(id).set(doc);
-  } else {
-    memStore.conversations[id] = doc;
+    try {
+      await db.collection('conversations').doc(id).set(doc);
+    } catch (error) {
+      console.error('[Firebase] conversation write FAILED — kept in memory only, will not survive a restart:', error.message);
+    }
   }
   return id;
 }
 
 export async function updateConversation(id, updates) {
-  const upd = { ...updates, updatedAt: new Date().toISOString() };
+  const upd = sanitizeForFirestore({ ...updates, updatedAt: new Date().toISOString() });
+  if (memStore.conversations[id]) {
+    memStore.conversations[id] = { ...memStore.conversations[id], ...upd };
+  }
   if (db) {
-    await db.collection('conversations').doc(id).update(upd);
-  } else {
-    if (memStore.conversations[id]) {
-      memStore.conversations[id] = { ...memStore.conversations[id], ...upd };
+    try {
+      await db.collection('conversations').doc(id).set(upd, { merge: true });
+    } catch (error) {
+      console.error('[Firebase] conversation update FAILED — kept in memory only, will not survive a restart:', error.message);
     }
   }
 }
@@ -116,20 +145,22 @@ export async function getConversation(id) {
 
 export async function saveReport(data) {
   const id = data.id || genId();
-  const doc = {
+  const doc = sanitizeForFirestore({
     ...data,
     id,
     userId: normalizeUserId(data.userId),
     createdAt: data.createdAt || new Date().toISOString(),
     updatedAt: data.updatedAt || new Date().toISOString(),
-  };
+  });
   memStore.reports[id] = doc;
   if (db) {
     try {
       await db.collection('reports').doc(id).set(doc);
     } catch (error) {
-      console.warn('[Firebase] report write failed, keeping memory store fallback:', error.message);
+      console.error('[Firebase] report write FAILED — kept in memory only, WILL NOT survive a restart:', error.message);
     }
+  } else {
+    console.error('[Firebase] report write skipped — no Firestore connection, in memory only');
   }
   return id;
 }
@@ -178,12 +209,9 @@ export async function getUserReports(userId, limit = 20) {
 
   const memoryResults = Object.values(memStore.reports);
   const merged = dedupeReports([...results, ...memoryResults]);
+  // Strict ownership only — never fall back to returning everyone's reports.
   const filtered = merged.filter((report) => shouldIncludeReportForUser(report, normalizedUserId));
-  if (filtered.length > 0) {
-    return sortReportsByDate(filtered).slice(0, limit);
-  }
-
-  return sortReportsByDate(merged).slice(0, limit);
+  return sortReportsByDate(filtered).slice(0, limit);
 }
 
 export async function getReportsByConversationId(conversationId, limit = 20) {
@@ -193,13 +221,13 @@ export async function getReportsByConversationId(conversationId, limit = 20) {
       const snap = await db.collection('reports').get();
       results = snap.docs
         .map((d) => d.data())
-        .filter((report) => report.conversationId === conversationId || shouldIncludeReportForUser(report, 'anonymous'));
+        .filter((report) => report.conversationId === conversationId);
     } catch (error) {
       console.warn('[Firebase] conversation report query failed, using memory store:', error.message);
     }
   }
 
-  const memoryResults = Object.values(memStore.reports).filter((r) => r.conversationId === conversationId || shouldIncludeReportForUser(r, 'anonymous'));
+  const memoryResults = Object.values(memStore.reports).filter((r) => r.conversationId === conversationId);
   const merged = dedupeReports([...results, ...memoryResults]);
   return sortReportsByDate(merged).slice(0, limit);
 }
@@ -245,6 +273,79 @@ export async function getAggregateSignals(limit = 20) {
   return Object.values(memStore.drug_signals)
     .sort((a, b) => b.totalReports - a.totalReports)
     .slice(0, limit);
+}
+
+// ---- REAL AGGREGATE STATISTICS (no fabricated/random data) ----
+
+export async function getRealPublicStats() {
+  const [reports, signals] = await Promise.all([getAllReports(500), getAggregateSignals(100)]);
+
+  const now = new Date();
+  const currentMonthKey = `${now.getFullYear()}-${now.getMonth()}`;
+
+  let reportsThisMonth = 0;
+  const monthCounts = new Map();
+  const reporterTypeCounts = {};
+  const languageSet = new Set();
+  let serious = 0;
+  let nonSerious = 0;
+
+  for (const report of reports) {
+    const created = report.createdAt ? new Date(report.createdAt) : null;
+    if (created && !Number.isNaN(created.getTime())) {
+      const key = `${created.getFullYear()}-${created.getMonth()}`;
+      monthCounts.set(key, (monthCounts.get(key) || 0) + 1);
+      if (key === currentMonthKey) reportsThisMonth++;
+    }
+
+    const reporterType = report.extractedData?.metadata?.reporter_type;
+    if (reporterType) reporterTypeCounts[reporterType] = (reporterTypeCounts[reporterType] || 0) + 1;
+
+    if (report.language) languageSet.add(report.language);
+
+    const isSerious = report.icsr?.seriousness === 'Serious' || report.meddraMapping?.seriousness?.is_serious === true;
+    const isKnownNonSerious = report.icsr?.seriousness === 'Non-serious' || report.meddraMapping?.seriousness?.is_serious === false;
+    if (isSerious) serious++;
+    else if (isKnownNonSerious) nonSerious++;
+  }
+
+  const monthlyTrend = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    monthlyTrend.push({ month: d.toLocaleString('en-IN', { month: 'short' }), reports: monthCounts.get(key) || 0 });
+  }
+
+  const adrTotals = new Map();
+  const topDrugs = signals
+    .map((s) => {
+      Object.entries(s.adrCounts || {}).forEach(([term, count]) => {
+        adrTotals.set(term, (adrTotals.get(term) || 0) + count);
+      });
+      return { drug: s.drugName, reports: s.totalReports || 0 };
+    })
+    .sort((a, b) => b.reports - a.reports)
+    .slice(0, 10);
+
+  const commonAdrs = Array.from(adrTotals.entries())
+    .map(([term, count]) => ({ term, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  return {
+    total_reports: reports.length,
+    reports_this_month: reportsThisMonth,
+    drugs_with_signals: signals.length,
+    languages_used: languageSet.size,
+    reporter_type_distribution: reporterTypeCounts,
+    serious_vs_nonserious: { serious, non_serious: nonSerious },
+    common_adrs: commonAdrs,
+    monthly_trend: monthlyTrend,
+    top_drugs: topDrugs,
+    // Pharmaco does not currently collect reporter location, so this is
+    // intentionally empty rather than fabricated — see ADRHeatmap.jsx.
+    geographic_distribution: [],
+  };
 }
 
 export async function getPublicStats() {

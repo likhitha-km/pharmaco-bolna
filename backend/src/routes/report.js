@@ -108,22 +108,35 @@ router.post('/:reportId/submit', requireAuth, async (req, res) => {
 });
 
 // POST /api/report/:reportId/followup
-router.post('/:reportId/followup', async (req, res) => {
+router.post('/:reportId/followup', requireAuth, async (req, res) => {
   try {
     const { message } = req.body;
+    if (!message || !message.trim()) {
+      return res.status(400).json({ error: 'A follow-up message is required.' });
+    }
+
     const report = await getReport(req.params.reportId);
     if (!report) return res.status(404).json({ error: 'Report not found' });
 
-    const conversation = await getConversation(report.conversationId);
+    const conversation = report.conversationId ? await getConversation(report.conversationId) : null;
     if (conversation) {
       const updatedMessages = [
         ...(conversation.messages || []),
         { role: 'user', content: message, timestamp: new Date().toISOString(), isFollowup: true },
       ];
-      await updateConversation(report.conversationId, { messages: updatedMessages, status: 'followup' });
+      await updateConversation(report.conversationId, { messages: updatedMessages });
     }
 
-    res.json({ success: true, message: 'Follow-up recorded. Our team will process the additional information.' });
+    const followupEntry = { message: message.trim(), submittedAt: new Date().toISOString() };
+    const updatedReport = {
+      ...report,
+      status: report.status === 'draft' ? report.status : 'followup_requested',
+      followupMessages: [...(report.followupMessages || []), followupEntry],
+      updatedAt: new Date().toISOString(),
+    };
+    await saveReport(updatedReport);
+
+    res.json({ success: true, message: 'Your follow-up has been added to this report.', report: updatedReport });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -135,17 +148,6 @@ router.get('/:reportId/icsr', async (req, res) => {
     const report = await getReport(req.params.reportId);
     if (!report) return res.status(404).json({ error: 'Report not found' });
     res.json({ icsr: report.icsr, completenessScore: report.completenessScore });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// POST /api/report/:reportId/export
-router.post('/:reportId/export', async (req, res) => {
-  try {
-    const report = await getReport(req.params.reportId);
-    if (!report) return res.status(404).json({ error: 'Report not found' });
-    res.json({ data: report.icsr, format: 'json', message: 'PDF export available in production version' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

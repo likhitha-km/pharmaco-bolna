@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Trash2, Send, Copy, Edit3 } from 'lucide-react';
+import { FileText, Plus, Trash2, Send, Copy, Edit3, MessageSquarePlus } from 'lucide-react';
+import { showToast } from '../components/common/Toast.jsx';
 
 const REPORT_CACHE_KEY = 'pharmaco_cached_reports';
 
@@ -32,6 +33,9 @@ export default function MyReports() {
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(null);
   const [actioning, setActioning] = useState(null);
+  const [followupTarget, setFollowupTarget] = useState(null);
+  const [followupText, setFollowupText] = useState('');
+  const [followupSubmitting, setFollowupSubmitting] = useState(false);
 
   const loadReports = async () => {
     const cachedReports = readCachedReports();
@@ -112,6 +116,28 @@ export default function MyReports() {
 
   const handleView = (report) => setSelected(report);
 
+  const openFollowup = (report) => {
+    setFollowupTarget(report);
+    setFollowupText('');
+  };
+
+  const submitFollowup = async () => {
+    if (!followupTarget || !followupText.trim()) return;
+    setFollowupSubmitting(true);
+    try {
+      await reportApi.followup(followupTarget.id, followupText.trim());
+      showToast('Follow-up added to your report.', 'success');
+      setFollowupTarget(null);
+      setFollowupText('');
+      await loadReports();
+    } catch (err) {
+      console.error('Follow-up failed', err);
+      showToast('Could not send your follow-up. Please try again.', 'error');
+    } finally {
+      setFollowupSubmitting(false);
+    }
+  };
+
   const handleEdit = (report) => navigate(`/report/review/${report.conversationId || report.id}`);
 
   return (
@@ -122,7 +148,7 @@ export default function MyReports() {
             <h1 className="text-h1" style={{ marginBottom: 4 }}>My Reports</h1>
             <p className="text-body">Your submitted ADR reports</p>
           </div>
-          <button className="btn btn-primary" onClick={() => navigate('/report')} aria-label="File a new report">
+          <button className="btn btn-primary" onClick={() => navigate('/report?new=true')} aria-label="File a new report">
             <Plus size={18} aria-hidden="true" /> New Report
           </button>
         </div>
@@ -136,7 +162,7 @@ export default function MyReports() {
             <FileText size={48} color="var(--color-text-muted)" style={{ margin: '0 auto 16px' }} aria-hidden="true" />
             <p className="text-h4" style={{ marginBottom: 8 }}>No reports yet</p>
             <p className="text-body" style={{ marginBottom: 24 }}>Have you experienced a medicine side effect? Report it to help others.</p>
-            <button className="btn btn-primary" onClick={() => navigate('/report')}>Report a Side Effect</button>
+            <button className="btn btn-primary" onClick={() => navigate('/report?new=true')}>Report a Side Effect</button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -153,9 +179,14 @@ export default function MyReports() {
                   <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(r)} disabled={actioning === r.id}>
                     <Trash2 size={14} /> Delete
                   </button>
-                  <button className="btn btn-primary btn-sm" onClick={() => handleSubmit(r)} disabled={actioning === r.id || r.status === 'submitted'}>
-                    <Send size={14} /> {r.status === 'submitted' ? 'Submitted' : 'Submit'}
+                  <button className="btn btn-primary btn-sm" onClick={() => handleSubmit(r)} disabled={actioning === r.id || r.status === 'submitted' || r.status === 'followup_requested'}>
+                    <Send size={14} /> {r.status === 'submitted' || r.status === 'followup_requested' ? 'Submitted' : 'Submit'}
                   </button>
+                  {(r.status === 'submitted' || r.status === 'followup_requested') && (
+                    <button className="btn btn-ghost btn-sm" onClick={() => openFollowup(r)}>
+                      <MessageSquarePlus size={14} /> Add Follow-up
+                    </button>
+                  )}
                   <button className="btn btn-ghost btn-sm" onClick={() => handleDuplicate(r)} disabled={actioning === r.id}>
                     <Copy size={14} /> Duplicate
                   </button>
@@ -169,6 +200,29 @@ export default function MyReports() {
       {selected && (
         <Modal isOpen={!!selected} onClose={() => setSelected(null)} title={`Report ${selected.id}`} size="lg">
           <ICSRReport report={selected.icsr || selected} />
+        </Modal>
+      )}
+
+      {followupTarget && (
+        <Modal isOpen={!!followupTarget} onClose={() => setFollowupTarget(null)} title={`Follow-up on ${followupTarget.id}`} size="sm">
+          <p style={{ fontSize: 14, color: 'var(--color-text-secondary)', marginBottom: 12 }}>
+            Add new information about this report — for example, whether the reaction has resolved or if you were hospitalized since submitting.
+          </p>
+          <textarea
+            value={followupText}
+            onChange={(e) => setFollowupText(e.target.value)}
+            rows={4}
+            className="input"
+            placeholder="e.g. The rash has fully cleared up as of this week."
+            style={{ width: '100%', resize: 'vertical', fontFamily: 'var(--font-body)', marginBottom: 16 }}
+            aria-label="Follow-up message"
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button className="btn btn-ghost" onClick={() => setFollowupTarget(null)}>Cancel</button>
+            <button className="btn btn-primary" onClick={submitFollowup} disabled={!followupText.trim() || followupSubmitting}>
+              {followupSubmitting ? 'Sending...' : 'Send Follow-up'}
+            </button>
+          </div>
         </Modal>
       )}
     </main>

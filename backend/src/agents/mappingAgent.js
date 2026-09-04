@@ -1,4 +1,5 @@
 import { callGroq, MODEL_SMART } from '../services/nebiusService.js';
+import { extractJson } from '../utils/parseJson.js';
 
 const MEDDRA_REFERENCE = `WHO MedDRA Preferred Terms reference list:
 Dizziness 10013573 | Nausea 10028813 | Vomiting 10047700 | Headache 10019211 | Rash 10037844 | Fatigue 10016256 | Chest pain 10008479 | Tremor 10044565 | Dyspnoea 10013968 | Abdominal pain 10000081 | Insomnia 10022437 | Palpitations 10033557 | Oedema 10030095 | Pruritus 10037087 | Dry mouth 10013781 | Diarrhoea 10012735 | Constipation 10010774 | Blurred vision 10005886 | Hypertension 10020772 | Hypotension 10021097 | Tachycardia 10043071 | Bradycardia 10006093 | Urticaria 10046735 | Alopecia 10001760 | Jaundice 10023126 | Confusion 10010300 | Anxiety 10002855 | Depression 10012378 | Weight gain 10047899 | Weight loss 10047900 | Myalgia 10028411 | Arthralgia 10003239 | Fever 10016558 | Chills 10008531 | Sweating 10042241 | Flushing 10016825 | Anorexia 10002646 | Flatulence 10016766 | Dyspepsia 10013946 | Gastritis 10017853 | Hepatotoxicity 10019851 | Nephrotoxicity 10029149 | Peripheral neuropathy 10034620 | Paraesthesia 10033775 | Amnesia 10001949 | Somnolence 10041349 | Hallucination 10019063 | Agitation 10001497 | Syncope 10042772 | Vertigo 10047166 | Tinnitus 10043882 | Angioedema 10002424 | Anaphylaxis 10002198 | Stevens-Johnson syndrome 10042033 | Drug reaction with eosinophilia 10013700 | Thrombocytopenia 10043554 | Leucopenia 10024318 | Anaemia 10002034 | Hyperglycaemia 10020635 | Hypoglycaemia 10021005 | Hyponatraemia 10021026 | Hypokalaemia 10021015 | QT prolongation 10037396 | Pulmonary embolism 10037377 | Deep vein thrombosis 10051055 | Stroke 10042244 | Myocardial infarction 10028596 | Renal failure 10038435 | Liver failure 10024690 | Pancreatitis 10033645 | Colitis 10009887 | Photosensitivity 10034966 | Acne 10000496 | Dry skin 10013786 | Hair loss 10001760 | Muscle weakness 10028356 | Back pain 10003988 | Joint swelling 10023216 | Cough 10011224 | Rhinitis 10039085 | Conjunctivitis 10010741`;
@@ -61,8 +62,9 @@ export async function mapToMedDRA(extractedData) {
       0.1
     );
 
-    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return JSON.parse(cleaned);
+    const parsed = extractJson(raw);
+    if (!parsed) throw new Error('Mapping model returned no parseable JSON');
+    return parsed;
   } catch (error) {
     console.error('[MappingAgent] error:', error.message);
     return {

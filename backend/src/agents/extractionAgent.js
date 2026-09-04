@@ -1,6 +1,14 @@
 import { callGroq, MODEL_FAST } from '../services/nebiusService.js';
+import { extractJson } from '../utils/parseJson.js';
 
-const SYSTEM_PROMPT = `You are a pharmacovigilance data extraction specialist. Extract structured ADR information from the conversation provided. Respond ONLY with valid JSON. No explanation, no markdown. For any field not present in the conversation, use null. For confidence, score 0.0 to 1.0 based on how explicitly the field was mentioned.`;
+const SYSTEM_PROMPT = `You are a pharmacovigilance data extraction specialist. Extract structured ADR information from the conversation provided. Respond ONLY with valid JSON. No explanation, no markdown. For any field not present in the conversation, use null. For confidence, score 0.0 to 1.0 based on how explicitly the field was mentioned.
+
+Never invent or guess a value that was not actually stated — leave it null/unknown instead. But do not under-extract either: read the WHOLE conversation carefully, including casual or indirect phrasing, and capture every fact the user actually gave, even if the answer to a specific field wasn't asked as a direct question. In particular:
+- dechallenge: set to "positive" if the user says or implies the reaction got better/resolved/improved after the medicine was stopped or reduced (e.g. "she stopped it and the rash cleared up", "doctor took me off it and I felt better"). Set to "negative" if they say it did NOT improve after stopping. Otherwise "unknown".
+- rechallenge: set to "positive" if symptoms returned after restarting the same medicine, "negative" if they did not return after restarting, "not_applicable" if the medicine was never restarted or this was never discussed.
+- clinical_context.outcome: capture the patient's stated current status in their own words, normalized briefly (e.g. "fully recovered", "recovering", "still ongoing", "hospitalized then discharged") whenever they say anything about how they are now or how it ended — not just if asked "what is the outcome".
+- clinical_context.hospitalization: true/false only if explicitly stated (e.g. "admitted to hospital" = true, "treated at home" = false); otherwise null.
+Only set these when the conversation genuinely supports the value — this is about not missing what was actually said, not about guessing what probably happened.`;
 
 const SCHEMA_EXAMPLE = `{
   "suspected_medicines": [
@@ -78,9 +86,9 @@ export async function extractFromConversation(conversationHistory) {
       0.1
     );
 
-    // Strip markdown code fences if present
-    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return JSON.parse(cleaned);
+    const parsed = extractJson(raw);
+    if (!parsed) throw new Error('Extraction model returned no parseable JSON');
+    return parsed;
   } catch (error) {
     console.error('[ExtractionAgent] error:', error.message);
     // Return minimal valid structure

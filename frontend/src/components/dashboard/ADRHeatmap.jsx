@@ -30,9 +30,15 @@ function getIntensity(reports) {
 export function ADRHeatmap({ geoData = [], onStateClick }) {
   const stateReports = {};
   geoData.forEach((d) => { stateReports[d.state] = d.reports; });
+  const hasRealData = geoData.length > 0;
 
   return (
     <div>
+      {!hasRealData && (
+        <p style={{ fontSize: 12, color: 'var(--color-text-muted)', background: 'var(--color-surface-secondary)', padding: '8px 12px', borderRadius: 'var(--radius-md)', marginBottom: 16 }}>
+          Pharmaco does not currently collect reporter location, so no real geographic data exists yet — every state is shown unfilled below.
+        </p>
+      )}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16, flexWrap: 'wrap' }}>
         <span style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>Report density:</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -49,7 +55,7 @@ export function ADRHeatmap({ geoData = [], onStateClick }) {
         {/* Background */}
         <rect width="520" height="600" fill="#F9FAFB" rx="8" />
         {STATES.map((state) => {
-          const reports = stateReports[state.name] || Math.floor(Math.random() * 120 + 20);
+          const reports = stateReports[state.name] || 0;
           const opacity = getIntensity(reports);
           return (
             <g key={state.id}>

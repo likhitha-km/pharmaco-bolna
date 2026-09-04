@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Shield, CheckCircle, Phone } from 'lucide-react';
 import { ConversationWindow } from '../components/conversation/ConversationWindow.jsx';
 import { CompletenessScore } from '../components/report/CompletenessScore.jsx';
-import { useConversation } from '../hooks/useConversation.js';
+import { useConversation, ACTIVE_CONVERSATION_KEY } from '../hooks/useConversation.js';
 import { useLanguageContext } from '../context/LanguageContext.jsx';
 import { useReportProgress } from '../hooks/useReportProgress.js';
 import { LANGUAGES } from '../utils/i18n.js';
@@ -19,6 +19,7 @@ export default function Report() {
 
   const {
     startConversation,
+    hydrateConversation,
     conversationId,
     extractedData,
     completenessScore,
@@ -31,13 +32,29 @@ export default function Report() {
 
   useEffect(() => {
     const initConversation = async () => {
-      if (!started) {
-        setStarted(true);
-        if (!conversationId) {
-          const prefillDrug = searchParams.get('drug');
+      if (started || conversationId) return;
+      setStarted(true);
+
+      // Resume an in-progress conversation after a refresh instead of
+      // silently starting a new one and orphaning the old chat history.
+      // "?new=true" (used by "New Report" in My Reports) skips this.
+      const forceNew = searchParams.get('new') === 'true';
+      let storedId = null;
+      if (!forceNew) {
+        try { storedId = localStorage.getItem(ACTIVE_CONVERSATION_KEY); } catch { /* ignore */ }
+      }
+
+      if (storedId) {
+        const restored = await hydrateConversation(storedId);
+        // Stale, deleted, or already-submitted — don't resurrect it.
+        if (!restored || restored.status === 'completed') {
+          try { localStorage.removeItem(ACTIVE_CONVERSATION_KEY); } catch { /* ignore */ }
           await startConversation(userType, language, isAnonymous);
         }
+        return;
       }
+
+      await startConversation(userType, language, isAnonymous);
     };
     initConversation();
   }, [started, conversationId]);

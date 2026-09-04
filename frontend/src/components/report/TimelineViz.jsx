@@ -9,14 +9,15 @@ export function TimelineViz({ events = [] }) {
   };
 
   if (!events.length) {
-    const defaultEvents = [
-      { date: 'Day 1', label: 'Medicine started', type: 'medicine' },
-      { date: 'Day 3', label: 'Reaction began', type: 'reaction' },
-      { date: 'Day 4', label: 'Sought help', type: 'doctor' },
-      { date: 'Day 5', label: 'Stopped medicine', type: 'stop' },
-      { date: 'Day 14', label: 'Recovery', type: 'recovery' },
-    ];
-    events = defaultEvents;
+    // Honest empty state — no fabricated placeholder dates. Real dates
+    // appear here as soon as the conversation collects them.
+    return (
+      <div style={{ padding: '24px 0', textAlign: 'center' }}>
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)' }}>
+          No dated events yet — the timeline will appear once a start date or onset date is collected.
+        </p>
+      </div>
+    );
   }
 
   return (

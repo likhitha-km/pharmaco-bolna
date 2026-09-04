@@ -1,6 +1,17 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
 export function ADRTrendChart({ data = [], title = 'ADR Reports Over Time' }) {
+  if (!data.length) {
+    return (
+      <div>
+        <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, marginBottom: 16 }}>{title}</h3>
+        <p style={{ fontSize: 13, color: 'var(--color-text-muted)', padding: '32px 0', textAlign: 'center' }}>
+          Not enough submitted reports for this medicine yet to show a trend.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div>
       <h3 style={{ fontFamily: 'var(--font-display)', fontSize: 17, fontWeight: 600, marginBottom: 16 }}>{title}</h3>
