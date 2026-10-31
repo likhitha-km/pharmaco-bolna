@@ -188,4 +188,4 @@ Users can find this ID on the signup confirmation screen and in their profile da
 
 ## License
 
-This project was built for hackathon demonstration purposes.
+MIT License
