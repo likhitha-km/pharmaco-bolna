@@ -1,42 +1,32 @@
-import { Mic, MicOff, Loader } from 'lucide-react';
-import { useVoiceInput } from '../../hooks/useVoiceInput.js';
+import { Mic, Square, Loader } from 'lucide-react';
 
-export function VoiceInput({ language, onTranscript, onVoiceBlob }) {
-  const handleTranscript = (result, isBlob) => {
-    if (isBlob) onVoiceBlob?.(result);
-    else onTranscript?.(result);
-  };
-
-  const { startRecording, stopRecording, isRecording, isProcessing } = useVoiceInput({
-    language,
-    onTranscript: handleTranscript,
-  });
+/**
+ * The composer's microphone control. Deliberately a labelled pill rather
+ * than a bare icon so voice is the obvious way in — but it only dictates
+ * into the composer; the user still reviews and sends.
+ */
+export function VoiceInput({ voice, disabled, languageLabel }) {
+  const { isListening, isBusy, state, supported } = voice;
 
   const handleClick = () => {
-    if (isRecording) stopRecording();
-    else startRecording();
+    if (isListening) voice.stop();
+    else voice.start();
   };
+
+  const label = isListening ? 'Stop' : state === 'transcribing' ? 'Transcribing' : state === 'requesting' ? 'Allow mic' : 'Speak';
 
   return (
     <button
+      type="button"
       onClick={handleClick}
-      className="btn btn-icon"
-      aria-label={isRecording ? 'Stop recording' : 'Start voice input'}
-      style={{
-        background: isRecording ? '#EF4444' : 'var(--color-primary)',
-        color: '#fff',
-        animation: isRecording ? 'recordingPulse 1.5s ease-in-out infinite' : 'none',
-        transition: 'background 0.2s',
-      }}
-      disabled={isProcessing}
+      className={`composer-mic${isListening ? ' is-listening' : ''}`}
+      aria-label={isListening ? 'Stop recording and review the transcript' : `Speak your message in ${languageLabel}`}
+      aria-pressed={isListening}
+      disabled={disabled || isBusy || !supported}
+      title={supported ? undefined : 'Voice input is not supported in this browser'}
     >
-      {isProcessing ? (
-        <Loader size={20} className="animate-spin" aria-hidden="true" />
-      ) : isRecording ? (
-        <MicOff size={20} aria-hidden="true" />
-      ) : (
-        <Mic size={20} aria-hidden="true" />
-      )}
+      {isBusy ? <Loader size={18} className="animate-spin" aria-hidden="true" /> : isListening ? <Square size={16} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
+      <span className="composer-mic-label">{label}</span>
     </button>
   );
 }

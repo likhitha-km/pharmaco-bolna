@@ -1,5 +1,5 @@
 import express from 'express';
-import { getReport, getUserReports, saveReport, updateConversation, getConversation, getReportsByConversationId } from '../services/firebaseService.js';
+import { getReport, getUserReports, saveReport, deleteReport, deleteConversation, updateConversation, getConversation, getReportsByConversationId } from '../services/firebaseService.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -40,7 +40,8 @@ router.post('/draft', requireAuth, async (req, res) => {
 router.get('/my-reports', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.uid || 'anonymous';
-    const reports = await getUserReports(userId, 50);
+    // Withdrawn reports stay on file for pharmacovigilance but are not shown to the owner.
+    const reports = (await getUserReports(userId, 50)).filter((r) => r.status !== 'withdrawn');
     res.json({ reports, count: reports.length });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -154,14 +155,31 @@ router.get('/:reportId/icsr', async (req, res) => {
 });
 
 // DELETE /api/report/:reportId
+// Only the report's owner can delete it (anyone else gets a 404, as if it did not exist).
+//  - A draft was never submitted to PvPI: it is permanently deleted, together
+//    with the chat it came from (unless another report still uses that chat).
+//  - A submitted report is part of the pharmacovigilance record: it is
+//    withdrawn — hidden from the owner's list but kept on file — not erased.
 router.delete('/:reportId', requireAuth, async (req, res) => {
   try {
     const report = await getReport(req.params.reportId);
-    if (!report) return res.status(404).json({ error: 'Report not found' });
+    const caller = req.user?.uid || 'anonymous';
+    if (!report || (report.userId || 'anonymous') !== caller) return res.status(404).json({ error: 'Report not found' });
+
+    if (report.status === 'draft') {
+      await deleteReport(report.id);
+      if (report.conversationId) {
+        const others = (await getReportsByConversationId(report.conversationId, 20)).filter((r) => r.id !== report.id);
+        if (others.length === 0) await deleteConversation(report.conversationId);
+      }
+      return res.json({ success: true, mode: 'deleted', message: 'Draft deleted' });
+    }
+
     await saveReport({ ...report, status: 'withdrawn', withdrawnAt: new Date().toISOString(), updatedAt: new Date().toISOString() });
-    res.json({ success: true, message: 'Report withdrawn' });
+    res.json({ success: true, mode: 'withdrawn', message: 'Report withdrawn' });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error('[DELETE /report/:id]', error);
+    res.status(500).json({ error: 'Could not delete the report. Please try again.', message: error.message });
   }
 });
 

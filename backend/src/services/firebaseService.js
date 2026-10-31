@@ -18,8 +18,12 @@ function initFirebase() {
   disableProxyEnvironment();
   if (admin.apps.length === 0) {
     try {
-      const serviceAccountPath = resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './firebase/serviceAccount.json');
-      const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+      // On a host without a secrets file (e.g. Render), the credentials come in as
+      // FIREBASE_SERVICE_ACCOUNT_JSON: the raw JSON, or the same JSON base64-encoded.
+      const inline = (process.env.FIREBASE_SERVICE_ACCOUNT_JSON || '').trim();
+      const serviceAccount = inline
+        ? JSON.parse(inline.startsWith('{') ? inline : Buffer.from(inline, 'base64').toString('utf8'))
+        : JSON.parse(readFileSync(resolve(process.env.FIREBASE_SERVICE_ACCOUNT_PATH || './firebase/serviceAccount.json'), 'utf8'));
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
       });
@@ -177,6 +181,20 @@ export async function getReport(id) {
     }
   }
   return memStore.reports[id] || null;
+}
+
+/**
+ * Permanently remove a report. If the datastore refuses, this throws — callers
+ * must not tell the user it was deleted when it was not.
+ */
+export async function deleteReport(id) {
+  delete memStore.reports[id];
+  if (db) await db.collection('reports').doc(id).delete();
+}
+
+export async function deleteConversation(id) {
+  delete memStore.conversations[id];
+  if (db) await db.collection('conversations').doc(id).delete();
 }
 
 export async function getAllReports(limit = 50) {

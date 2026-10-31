@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import ErrorBoundary from '../components/ErrorBoundary.jsx';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Shield, CheckCircle, Phone } from 'lucide-react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { CheckCircle, Phone, AudioLines, SlidersHorizontal, X, PlayCircle } from 'lucide-react';
 import { ConversationWindow } from '../components/conversation/ConversationWindow.jsx';
 import { CompletenessScore } from '../components/report/CompletenessScore.jsx';
 import { useConversation, ACTIVE_CONVERSATION_KEY } from '../hooks/useConversation.js';
@@ -15,7 +15,11 @@ export default function Report() {
   const { language, setLanguage } = useLanguageContext();
   const [userType, setUserType] = useState('patient');
   const [isAnonymous, setIsAnonymous] = useState(true);
-  const [started, setStarted] = useState(false);
+  // A ref, not state: React Strict Mode runs effects twice back-to-back, and state
+  // set in the first run is not visible to the second — which started two
+  // conversations and showed two welcome messages.
+  const initStartedRef = useRef(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   const {
     startConversation,
@@ -32,15 +36,17 @@ export default function Report() {
 
   useEffect(() => {
     const initConversation = async () => {
-      if (started || conversationId) return;
-      setStarted(true);
+      if (initStartedRef.current || conversationId) return;
+      initStartedRef.current = true;
 
       // Resume an in-progress conversation after a refresh instead of
       // silently starting a new one and orphaning the old chat history.
       // "?new=true" (used by "New Report" in My Reports) skips this.
       const forceNew = searchParams.get('new') === 'true';
-      let storedId = null;
-      if (!forceNew) {
+      // "?resume=<id>" — "Continue in chat" from My Reports. The backend only
+      // returns a conversation to the user who started it.
+      let storedId = searchParams.get('resume');
+      if (!storedId && !forceNew) {
         try { storedId = localStorage.getItem(ACTIVE_CONVERSATION_KEY); } catch { /* ignore */ }
       }
 
@@ -50,6 +56,9 @@ export default function Report() {
         if (!restored || restored.status === 'completed') {
           try { localStorage.removeItem(ACTIVE_CONVERSATION_KEY); } catch { /* ignore */ }
           await startConversation(userType, language, isAnonymous);
+        } else {
+          try { localStorage.setItem(ACTIVE_CONVERSATION_KEY, storedId); } catch { /* ignore */ }
+          if (restored.language) setLanguage(restored.language);
         }
         return;
       }
@@ -57,23 +66,26 @@ export default function Report() {
       await startConversation(userType, language, isAnonymous);
     };
     initConversation();
-  }, [started, conversationId]);
+  }, [conversationId]);
 
   const handleReportReady = () => {
     if (conversationId) navigate(`/report/review/${conversationId}`);
   };
 
+  const handleLanguageChange = (code) => {
+    setLanguage(code);
+    changeLanguage(code);
+  };
+
   return (
     <ErrorBoundary>
-    <main className="page-content" style={{ height: 'calc(100vh - 72px)', display: 'flex', overflow: 'hidden' }}>
+    <main className="page-content report-layout">
+      {detailsOpen && <div className="report-sidebar-backdrop" onClick={() => setDetailsOpen(false)} aria-hidden="true" />}
       {/* Left sidebar */}
-      <aside style={{
-        width: 300, flexShrink: 0, borderRight: '1px solid var(--color-border)',
-        overflowY: 'auto', padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: 24,
-        background: 'var(--color-surface)',
-      }}
-        aria-label="Report settings sidebar"
-      >
+      <aside className={`report-sidebar${detailsOpen ? ' is-open' : ''}`} aria-label="Report settings sidebar">
+        <button className="btn btn-ghost btn-sm report-sidebar-close" onClick={() => setDetailsOpen(false)} aria-label="Close report details">
+          <X size={16} aria-hidden="true" /> Close
+        </button>
         {/* Language selector */}
         <div>
           <label htmlFor="lang-select" style={{ fontSize: 12, fontWeight: 500, color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
@@ -82,10 +94,7 @@ export default function Report() {
           <select
             id="lang-select"
             value={language}
-            onChange={(e) => {
-              setLanguage(e.target.value);
-              changeLanguage(e.target.value);
-            }}
+            onChange={(e) => handleLanguageChange(e.target.value)}
             className="input"
             style={{ height: 44 }}
           >
@@ -164,6 +173,11 @@ export default function Report() {
           )}
         </div>
 
+        {/* Save & resume */}
+        <div style={{ fontSize: 12.5, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
+          Your conversation is saved as you go. Use <strong>Save &amp; finish later</strong> to keep a draft in My Reports and continue it any time.
+        </div>
+
         {/* Emergency contacts */}
         <div style={{ padding: 16, background: '#FEF2F2', borderRadius: 'var(--radius-md)', border: '1px solid #FCA5A5' }}>
           <p style={{ fontWeight: 600, fontSize: 13, color: '#DC2626', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -174,32 +188,42 @@ export default function Report() {
           <a href="tel:112" style={{ display: 'block', marginTop: 8, fontSize: 14, fontWeight: 700, color: '#DC2626' }}>
             Emergency: 112
           </a>
+          <a href="tel:108" style={{ display: 'block', marginTop: 2, fontSize: 13, fontWeight: 600, color: '#DC2626' }}>
+            Ambulance: 108
+          </a>
         </div>
+
+        <Link to="/demo" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: 'var(--color-text-muted)' }}>
+          <PlayCircle size={14} aria-hidden="true" /> Explore demo scenarios
+        </Link>
       </aside>
 
       {/* Main chat window */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
         {/* Top bar */}
         <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--color-border)', display: 'flex', alignItems: 'center', gap: 12, background: 'var(--color-surface)' }}>
-          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Shield size={18} color="#fff" aria-hidden="true" />
+          <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <AudioLines size={18} color="#fff" aria-hidden="true" />
           </div>
-          <div>
-            <p style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16 }}>Pharmaco Assistant</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#10B981', display: 'inline-block' }} aria-hidden="true" />
-              <span style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Online</span>
-              <span style={{ padding: '1px 8px', background: 'var(--color-primary-light)', color: 'var(--color-primary)', borderRadius: 'var(--radius-full)', fontSize: 11, fontWeight: 500, marginLeft: 8 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <p style={{ fontFamily: 'var(--font-display)', fontWeight: 600, fontSize: 16 }}>Pharmaco Voice</p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+              <span className="report-subtitle" style={{ fontSize: 12, color: 'var(--color-text-muted)' }}>Multilingual Voice Based Adverse Drug Reaction Reporting</span>
+              <span style={{ padding: '1px 8px', background: 'var(--color-primary-light)', color: 'var(--color-primary)', borderRadius: 'var(--radius-full)', fontSize: 11, fontWeight: 500 }}>
                 {LANGUAGES.find((l) => l.code === language)?.native || language}
               </span>
             </div>
           </div>
+          <button className="btn btn-outline btn-sm report-details-toggle" onClick={() => setDetailsOpen(true)} aria-label="Show report details and progress">
+            <SlidersHorizontal size={14} aria-hidden="true" /> {extractedData ? `${completenessScore || progress.percentage}%` : 'Details'}
+          </button>
         </div>
 
         <ConversationWindow
           language={language}
           userType={userType}
           onReportReady={handleReportReady}
+          onLanguageChange={handleLanguageChange}
         />
       </div>
     </main>

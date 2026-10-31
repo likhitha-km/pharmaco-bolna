@@ -1,17 +1,17 @@
 import { Link } from 'react-router-dom';
-import { ShieldCheck, Globe, FileText, ArrowRight, MessageSquare, BarChart2, Users } from 'lucide-react';
+import { ShieldCheck, Globe, FileText, ArrowRight, MessageSquare, BarChart2, Users, Mic, PlayCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '../auth/AuthProvider.jsx';
 
 const STATS = [
-  { value: '1,247+', label: 'Reports Received' },
   { value: '9', label: 'Indian Languages' },
-  { value: '28+', label: 'AMCs Connected' },
+  { value: 'Speak or type', label: 'Switch any time, review before sending' },
+  { value: 'You confirm', label: 'Nothing is submitted until you check it' },
 ];
 
 const STEPS = [
   { icon: MessageSquare, title: 'Tell us what happened', desc: 'Start a simple conversation. Describe the side effect in your own words — no forms, no jargon.' },
-  { icon: Globe, title: 'We understand your language', desc: 'Hindi, Tamil, Telugu, Kannada, Marathi, Bengali and more. Speak or type naturally.' },
+  { icon: Mic, title: 'Speak in your language', desc: 'Tap Speak and talk in Hindi, Tamil, Telugu, Kannada and more. Check the words before you send them. Typing works too.' },
   { icon: ShieldCheck, title: 'Safety reaches regulators', desc: 'Your report is automatically structured and routed to India\'s PvPI network for expert review.' },
 ];
 
@@ -36,8 +36,8 @@ export default function Home() {
             <motion.div initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
               {/* Badge */}
               <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 14px', background: 'var(--color-primary-light)', borderRadius: 'var(--radius-full)', marginBottom: 28 }}>
-                <ShieldCheck size={16} color="var(--color-primary)" aria-hidden="true" />
-                <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--color-primary)' }}>India's Pharmacovigilance Platform</span>
+                <Mic size={16} color="var(--color-primary)" aria-hidden="true" />
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-primary)' }}>Pharmaco Voice · Multilingual Voice Based Adverse Drug Reaction Reporting</span>
               </div>
 
               <h1 className="text-hero" style={{ marginBottom: 24, letterSpacing: '-0.5px' }}>
@@ -60,11 +60,22 @@ export default function Home() {
                 </Link>
               </div>
 
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginTop: -24, marginBottom: 36 }}>
+                <Link to={user ? '/report' : '/signup'} style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 16px', borderRadius: 'var(--radius-md)', background: 'var(--color-primary-light)', color: 'var(--color-primary-dark)', fontSize: 14, fontWeight: 600, textDecoration: 'none' }}>
+                  <Mic size={16} aria-hidden="true" />
+                  Speak or type your report in 9 Indian languages
+                  <ArrowRight size={16} aria-hidden="true" />
+                </Link>
+                <Link to="/demo" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 500, color: 'var(--color-text-secondary)' }}>
+                  <PlayCircle size={16} aria-hidden="true" /> Explore demo scenarios
+                </Link>
+              </div>
+
               {/* Trust signals */}
               <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
                 {[
                   { icon: ShieldCheck, text: 'Voluntary & Confidential' },
-                  { icon: Globe, text: '10+ Indian Languages' },
+                  { icon: Globe, text: '9 Indian Languages' },
                   { icon: FileText, text: 'CDSCO PvPI Aligned' },
                 ].map(({ icon: Icon, text }) => (
                   <div key={text} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

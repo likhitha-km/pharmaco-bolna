@@ -1,10 +1,11 @@
-const requestCounts = new Map();
-
 /**
  * Simple in-memory rate limiter.
  * In production: use Redis or express-rate-limit.
  */
 export function rateLimit(maxRequests = 60, windowMs = 60000) {
+  // Each limiter keeps its own counters, so a strict limit on an expensive route
+  // is independent of the general one.
+  const requestCounts = new Map();
   return (req, res, next) => {
     const ip = req.ip || req.connection.remoteAddress || 'unknown';
     const now = Date.now();

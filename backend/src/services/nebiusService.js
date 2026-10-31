@@ -5,6 +5,7 @@ dotenv.config();
 const NEBIUS_BASE_URL = process.env.NEBIUS_BASE_URL || 'https://api.studio.nebius.ai/v1';
 const MODEL_FAST = process.env.NEBIUS_MODEL_FAST || 'Qwen/Qwen3-32B';
 const MODEL_SMART = process.env.NEBIUS_MODEL_SMART || 'Qwen/Qwen3-235B-A22B-Instruct';
+const TIMEOUT_MS = Number(process.env.NEBIUS_TIMEOUT_MS) || 60000;
 
 function getAuthHeaders() {
   const apiKey = process.env.NEBIUS_API_KEY;
@@ -37,7 +38,7 @@ export async function callGroq(systemPrompt, messages, model, maxTokens = 1000, 
   try {
     const response = await axios.post(`${NEBIUS_BASE_URL}/chat/completions`, payload, {
       headers: getAuthHeaders(),
-      timeout: 120000,
+      timeout: TIMEOUT_MS,
     });
 
     const content = response.data.choices?.[0]?.message?.content || '';
@@ -66,7 +67,7 @@ export async function streamGroq(systemPrompt, messages, onChunk) {
   try {
     const response = await axios.post(`${NEBIUS_BASE_URL}/chat/completions`, payload, {
       headers: getAuthHeaders(),
-      timeout: 120000,
+      timeout: TIMEOUT_MS,
       responseType: 'stream',
     });
 

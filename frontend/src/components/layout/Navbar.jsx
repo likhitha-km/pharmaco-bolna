@@ -8,6 +8,7 @@ const PUBLIC_NAV_LINKS = [
   { to: '/', label: 'Home' },
   { to: '/search', label: 'Drug Search' },
   { to: '/safety', label: 'Safety Hub' },
+  { to: '/demo', label: 'Demos' },
 ];
 
 const PRIVATE_NAV_LINKS = [
@@ -17,6 +18,7 @@ const PRIVATE_NAV_LINKS = [
   { to: '/my-reports', label: 'My Reports' },
   { to: '/search', label: 'Drug Search' },
   { to: '/safety', label: 'Safety Hub' },
+  { to: '/demo', label: 'Demos' },
 ];
 
 export function Navbar() {

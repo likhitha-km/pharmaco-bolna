@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { getAnonymousId } from './anonymousId.js';
 
-const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000/api';
+const BASE_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4010/api';
 
 const api = axios.create({
   baseURL: BASE_URL,
@@ -41,6 +41,8 @@ export const conversationApi = {
   start: (data) => api.post('/conversation/start', data),
   message: (data) => api.post('/conversation/message', data),
   voice: (formData) => api.post('/conversation/voice', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  transcribe: (formData) => api.post('/conversation/transcribe', formData, { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 45000 }),
+  setLanguage: (conversationId, language) => api.put(`/conversation/${conversationId}/language`, { language }),
   end: (conversationId) => api.post('/conversation/end', { conversationId }),
   history: (conversationId) => api.get(`/conversation/history/${conversationId}`),
   updateFields: (conversationId, extractedData) => api.put(`/conversation/${conversationId}/fields`, { extractedData }),
@@ -71,6 +73,20 @@ export const dashboardApi = {
   publicStats: () => api.get('/dashboard/public-stats'),
   signalTracker: () => api.get('/dashboard/signal-tracker'),
   drugFrequency: () => api.get('/dashboard/drug-frequency'),
+};
+
+// ---- Voice API (Bolna + Sarvam) ----
+export const voiceApi = {
+  status: () => api.get('/voice/status'),
+  calls: () => api.get('/voice/calls'),
+  call: (id) => api.get(`/voice/calls/${encodeURIComponent(id)}`),
+  scenarios: () => api.get('/voice/scenarios'),
+  simulate: (scenarioId, speed = 1) => api.post('/voice/simulate', { scenarioId, speed }),
+  placeCall: (payload) => api.post('/voice/call', payload),
+  followupQueue: () => api.get('/voice/followup-queue'),
+  tts: (text, language) => api.post('/voice/tts', { text, language }),
+  eventsUrl: () => `${BASE_URL}/voice/events`,
+  webSessionUrl: () => `${BASE_URL}/voice/web-session`,
 };
 
 export default api;

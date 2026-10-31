@@ -1,0 +1,32 @@
+# Free Render web service for the Pharmaco API (no payment details needed).
+# Secrets (sync: false) are entered in the Render dashboard; they are never committed.
+services:
+  - type: web
+    name: pharmaco-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: HOST
+        value: 0.0.0.0
+      - key: NEBIUS_API_KEY
+        sync: false
+      - key: NEBIUS_BASE_URL
+        value: https://api.studio.nebius.ai/v1
+      - key: NEBIUS_MODEL_FAST
+        value: Qwen/Qwen3-32B
+      - key: NEBIUS_MODEL_SMART
+        value: Qwen/Qwen3-235B-A22B-Instruct
+      - key: SARVAM_API_KEY
+        sync: false
+      - key: FIREBASE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: FRONTEND_URL
+        value: https://pharmacoin-a71d7.web.app
+      - key: VOICE_TOOL_SECRET
+        generateValue: true

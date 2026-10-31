@@ -17,6 +17,7 @@ import Dashboard from './pages/Dashboard.jsx';
 import UserDashboard from './pages/UserDashboard.jsx';
 import RegulatorDashboard from './pages/RegulatorDashboard.jsx';
 import SafetyHub from './pages/SafetyHub.jsx';
+import Voice from './pages/Voice.jsx';
 import Login from './pages/Login.jsx';
 import Signup from './pages/Signup.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
@@ -30,7 +31,7 @@ function RootRedirect() {
 
 function AppLayout() {
   const location = useLocation();
-  const isScrollFooter = ['/', '/home', '/safety', '/search'].includes(location.pathname) || location.pathname.startsWith('/drug/');
+  const isScrollFooter = ['/', '/home', '/safety', '/search', '/voice', '/demo'].includes(location.pathname) || location.pathname.startsWith('/drug/');
 
   return (
     <>
@@ -102,6 +103,9 @@ function AppLayout() {
             )}
           />
           <Route path="/safety" element={<SafetyHub />} />
+          {/* Demo area: scripted calls, live console and the phone-channel preview. */}
+          <Route path="/demo" element={<Voice />} />
+          <Route path="/voice" element={<Voice />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
         {isScrollFooter && <Footer />}

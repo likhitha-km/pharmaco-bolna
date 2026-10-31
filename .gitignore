@@ -14,5 +14,14 @@ backend/firebase/serviceAccount.json
 # OS
 .DS_Store
 
-# Local reference docs
 Pharmaco Req.pdf
+
+# Bolna agent ids + generated payloads (contain the tool secret)
+backend/bolna-agents.json
+backend/bolna/
+
+# Project notes and documents (issues, submission notes, demo script, ...).
+# Only README files stay tracked.
+*.md
+!README.md
+!**/README.md

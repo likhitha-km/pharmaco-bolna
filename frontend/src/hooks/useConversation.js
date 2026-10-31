@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { useConversationContext } from '../context/ConversationContext.jsx';
 import { conversationApi, reportApi } from '../utils/api.js';
+import { tSafety } from '../utils/i18n.js';
 
 // Persists which conversation is currently "in progress" so a page refresh
 // on /report doesn't silently start a brand-new conversation and orphan the
@@ -16,11 +17,15 @@ function forgetActiveConversation() {
   try { localStorage.removeItem(ACTIVE_CONVERSATION_KEY); } catch { /* ignore */ }
 }
 
+const newClientId = () => (globalThis.crypto?.randomUUID?.() || `c-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+
 export function useConversation() {
   const { state, dispatch } = useConversationContext();
   const autoDraftedRef = useRef(new Set());
+  const sendingRef = useRef(false);
+  const startingRef = useRef(null);
 
-  const startConversation = useCallback(async (userType = 'patient', language = 'hi-IN', isAnonymous = true) => {
+  const doStartConversation = useCallback(async (userType, language, isAnonymous) => {
     dispatch({ type: 'RESET' });
     dispatch({ type: 'SET_LOADING', payload: true });
     dispatch({ type: 'SET_USER_TYPE', payload: userType });
@@ -30,9 +35,10 @@ export function useConversation() {
     try {
       const { data } = await conversationApi.start({ userType, language, isAnonymous });
       dispatch({ type: 'SET_CONVERSATION_ID', payload: data.conversationId });
+      // The server stamps the welcome message (id, seq, UTC time).
       dispatch({
         type: 'ADD_MESSAGE',
-        payload: { role: 'assistant', content: data.welcomeMessage, timestamp: new Date().toISOString() },
+        payload: data.welcome || { role: 'assistant', content: data.welcomeMessage },
       });
       rememberActiveConversation(data.conversationId);
       return data.conversationId;
@@ -43,13 +49,22 @@ export function useConversation() {
       dispatch({ type: 'SET_CONVERSATION_ID', payload: fallbackId });
       dispatch({
         type: 'ADD_MESSAGE',
-        payload: { role: 'assistant', content: language === 'hi-IN' ? 'नमस्ते! मैं Pharmaco का सहायक हूं। आप जो दवाई ले रहे थे, उसका नाम बताइए।' : "Hello! I'm Pharmaco's assistant. Which medicine did you take?", timestamp: new Date().toISOString() },
+        payload: { role: 'assistant', content: tSafety('offlineWelcome', language), clientId: newClientId() },
       });
       return fallbackId;
     } finally {
       dispatch({ type: 'SET_LOADING', payload: false });
     }
   }, [dispatch]);
+
+  const startConversation = useCallback((userType = 'patient', language = 'hi-IN', isAnonymous = true) => {
+    // A second call while one is in flight joins it instead of creating another
+    // conversation (and another welcome message).
+    if (startingRef.current) return startingRef.current;
+    const run = doStartConversation(userType, language, isAnonymous).finally(() => { startingRef.current = null; });
+    startingRef.current = run;
+    return run;
+  }, [doStartConversation]);
 
   const saveDraftAutomatically = useCallback(async (conversationId, extractedData, completenessScore, language, isAnonymous) => {
     if (!conversationId || !extractedData) return null;
@@ -75,28 +90,42 @@ export function useConversation() {
     }
   }, []);
 
-  const sendMessage = useCallback(async (text) => {
+  // inputMode 'voice' marks text the user dictated and reviewed before sending.
+  const sendMessage = useCallback(async (text, { inputMode = 'text' } = {}) => {
     if (!text.trim() || !state.conversationId) return;
+    // One turn at a time: the server processes a conversation's messages in
+    // order, and a second send mid-reply would only queue behind the first.
+    if (sendingRef.current) return;
+    sendingRef.current = true;
 
-    // Add user message immediately
-    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'user', content: text, timestamp: new Date().toISOString() } });
+    // Provisional bubbles. They carry no timestamp — the server stamps the real
+    // messages (UTC, with a sequence number) and replaces these on reply.
+    const userClientId = newClientId();
+    const botClientId = newClientId();
+    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'user', content: text, clientId: userClientId, ...(inputMode === 'voice' && { isVoice: true }) } });
+    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: '', clientId: botClientId, isLoading: true } });
     dispatch({ type: 'SET_LOADING', payload: true });
 
-    // Add placeholder bot message for streaming feel
-    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: '', timestamp: new Date().toISOString(), isLoading: true } });
-
     try {
-      const historyPayload = state.messages.map(m => ({ role: m.role, content: m.content }));
-
       const { data } = await conversationApi.message({
         conversationId: state.conversationId,
         message: text,
+        inputMode,
         userType: state.userType,
+        // The conversation language is explicit state; the server uses it for the
+        // reply, the emergency advice and (via the speaker) the voice playback.
         language: state.language,
-        history: historyPayload
       });
 
-      dispatch({ type: 'UPDATE_LAST_MESSAGE', payload: data.message });
+      dispatch({
+        type: 'RECONCILE_TURN',
+        payload: {
+          userClientId,
+          botClientId,
+          userMessage: data.userMessage,
+          assistantMessage: data.assistantMessage || { role: 'assistant', content: data.message },
+        },
+      });
 
       if (data.isEmergency) dispatch({ type: 'SET_EMERGENCY', payload: true });
       if (data.extractedData) dispatch({ type: 'SET_EXTRACTED_DATA', payload: data.extractedData });
@@ -105,49 +134,18 @@ export function useConversation() {
       if (data.isReportReady) dispatch({ type: 'SET_REPORT_READY', payload: true });
 
       // Once a report has reached "ready" at least once, keep the saved
-      // draft in sync with every later correction too (not just the turn
-      // that first flips report-ready) — this is what keeps My Reports and
-      // the review screen from going stale after "actually, it's X not Y".
+      // draft in sync with every later correction too.
       if (data.isReportReady || state.isReportReady) {
         await saveDraftAutomatically(state.conversationId, data.extractedData || state.extractedData, data.completenessScore ?? state.completenessScore, state.language, state.isAnonymous);
       }
     } catch (err) {
-      dispatch({ type: 'UPDATE_LAST_MESSAGE', payload: "I'm having trouble connecting. Please check your API key and try again." });
+      console.error('[useConversation] sendMessage error:', err);
+      dispatch({ type: 'FAIL_TURN', payload: { botClientId, content: tSafety('connectionError', state.language) } });
     } finally {
+      sendingRef.current = false;
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [state.conversationId, state.userType, state.language, state.messages, state.extractedData, state.completenessScore, state.isAnonymous, state.isReportReady, dispatch, saveDraftAutomatically]);
-
-  const sendVoice = useCallback(async (audioBlob) => {
-    if (!state.conversationId) return;
-    
-    // Optimistically add user bubble for voice so UI doesn't freeze
-    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'user', content: '🎤 (Processing audio...)', timestamp: new Date().toISOString(), isVoice: true, isLoading: true } });
-    dispatch({ type: 'SET_LOADING', payload: true });
-    
-    // Add placeholder bot message
-    dispatch({ type: 'ADD_MESSAGE', payload: { role: 'assistant', content: '', timestamp: new Date().toISOString(), isLoading: true } });
-
-    try {
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
-      formData.append('conversationId', state.conversationId);
-      formData.append('language', state.language);
-      const { data } = await conversationApi.voice(formData);
-      
-      dispatch({ type: 'UPDATE_VOICE_RESPONSE', payload: { transcript: data.transcript, message: data.message } });
-      
-      if (data.isReportReady) dispatch({ type: 'SET_REPORT_READY', payload: true });
-      if (data.isReportReady || state.isReportReady) {
-        await saveDraftAutomatically(state.conversationId, data.extractedData || state.extractedData, data.completenessScore ?? state.completenessScore, state.language, state.isAnonymous);
-      }
-    } catch (err) {
-      console.error('[useConversation] sendVoice error:', err);
-      dispatch({ type: 'UPDATE_LAST_MESSAGE', payload: "Voice processing failed. Please try typing instead." });
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  }, [state.conversationId, state.language, state.extractedData, state.completenessScore, state.isAnonymous, state.isReportReady, dispatch, saveDraftAutomatically]);
+  }, [state.conversationId, state.userType, state.language, state.extractedData, state.completenessScore, state.isAnonymous, state.isReportReady, dispatch, saveDraftAutomatically]);
 
   const endConversation = useCallback(async () => {
     if (!state.conversationId) return null;
@@ -217,14 +215,47 @@ export function useConversation() {
     return data;
   }, [state.conversationId, dispatch]);
 
+  // "Save & finish later": store whatever has been collected so far as a
+  // draft the user can resume from My Reports. The conversation itself is
+  // already persisted server-side on every turn.
+  const saveForLater = useCallback(async () => {
+    if (!state.conversationId || state.conversationId.startsWith('offline-')) return { saved: false };
+    if (!state.extractedData) return { saved: true, draft: false };
+    const result = await reportApi.saveDraft({
+      conversationId: state.conversationId,
+      extractedData: state.extractedData,
+      completenessScore: state.completenessScore,
+      isAnonymous: state.isAnonymous,
+      language: state.language,
+    });
+    return { saved: true, draft: true, reportId: result.data?.reportId };
+  }, [state.conversationId, state.extractedData, state.completenessScore, state.isAnonymous, state.language]);
+
   const resetConversation = useCallback(() => {
     forgetActiveConversation();
     dispatch({ type: 'RESET' });
   }, [dispatch]);
 
-  const changeLanguage = useCallback((lang) => {
+  // Language is explicit conversation state. Changing it is saved on the server
+  // straight away; if the patient hasn't spoken yet, the welcome message is
+  // re-written in the new language (earlier chat history is left as it was).
+  const changeLanguage = useCallback(async (lang) => {
     dispatch({ type: 'SET_LANGUAGE', payload: lang });
-  }, [dispatch]);
+    const first = state.messages[0];
+    const untouched = state.messages.length > 0 && !state.messages.some((m) => m.role === 'user');
+
+    if (!state.conversationId) return;
+    if (state.conversationId.startsWith('offline-')) {
+      if (untouched && first) dispatch({ type: 'REPLACE_MESSAGE', payload: { id: first.id, clientId: first.clientId, content: tSafety('offlineWelcome', lang) } });
+      return;
+    }
+    try {
+      const { data } = await conversationApi.setLanguage(state.conversationId, lang);
+      if (data.welcome && first) dispatch({ type: 'REPLACE_MESSAGE', payload: { id: first.id, clientId: first.clientId, content: data.welcome.content } });
+    } catch (err) {
+      console.error('[useConversation] changeLanguage error:', err);
+    }
+  }, [state.conversationId, state.messages, dispatch]);
 
   const changeUserType = useCallback((type) => {
     dispatch({ type: 'SET_USER_TYPE', payload: type });
@@ -238,11 +269,11 @@ export function useConversation() {
     ...state,
     startConversation,
     sendMessage,
-    sendVoice,
     endConversation,
     hydrateConversation,
     resetConversation,
     saveDraftAutomatically,
+    saveForLater,
     saveFieldEdits,
     generateDraftReport,
     changeLanguage,

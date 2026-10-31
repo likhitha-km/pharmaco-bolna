@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Plus, Trash2, Send, Copy, Edit3, MessageSquarePlus } from 'lucide-react';
+import { FileText, Plus, Trash2, Send, Copy, Edit3, MessageSquarePlus, MessageCircle } from 'lucide-react';
 import { showToast } from '../components/common/Toast.jsx';
 
 const REPORT_CACHE_KEY = 'pharmaco_cached_reports';
@@ -26,6 +26,7 @@ import { ICSRReport } from '../components/report/ICSRReport.jsx';
 import { Modal } from '../components/common/Modal.jsx';
 import { Skeleton } from '../components/common/Skeleton.jsx';
 import { reportApi } from '../utils/api.js';
+import { ACTIVE_CONVERSATION_KEY } from '../hooks/useConversation.js';
 
 export default function MyReports() {
   const navigate = useNavigate();
@@ -84,12 +85,32 @@ export default function MyReports() {
   };
 
   const handleDelete = async (report) => {
+    const isDraft = report.status === 'draft';
+    const confirmed = window.confirm(
+      isDraft
+        ? 'Delete this draft and its conversation? This can’t be undone.'
+        : 'This report has already been submitted, so it stays on file for pharmacovigilance. It will be withdrawn and removed from your list. Continue?',
+    );
+    if (!confirmed) return;
+
     setActioning(report.id);
     try {
       await reportApi.delete(report.id);
-      await loadReports();
+      // Remove it right away (list and offline cache) rather than waiting for a reload.
+      setReports((prev) => {
+        const next = prev.filter((r) => r.id !== report.id);
+        writeCachedReports(next);
+        return next;
+      });
+      try {
+        if (report.conversationId && localStorage.getItem(ACTIVE_CONVERSATION_KEY) === report.conversationId) {
+          localStorage.removeItem(ACTIVE_CONVERSATION_KEY);
+        }
+      } catch { /* ignore */ }
+      showToast(isDraft ? 'Draft deleted.' : 'Report withdrawn.', 'success');
     } catch (err) {
       console.error('Delete failed', err);
+      showToast(err.response?.data?.error || 'Could not delete the report. Please check your connection and try again.', 'error');
     } finally {
       setActioning(null);
     }
@@ -173,6 +194,11 @@ export default function MyReports() {
                   <button className="btn btn-ghost btn-sm" onClick={() => handleView(r)}>
                     <FileText size={14} /> View
                   </button>
+                  {r.status === 'draft' && r.conversationId && (
+                    <button className="btn btn-outline btn-sm" onClick={() => navigate(`/report?resume=${encodeURIComponent(r.conversationId)}`)}>
+                      <MessageCircle size={14} /> Continue in chat
+                    </button>
+                  )}
                   <button className="btn btn-ghost btn-sm" onClick={() => handleEdit(r)}>
                     <Edit3 size={14} /> Edit
                   </button>

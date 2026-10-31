@@ -1,8 +1,9 @@
 import { motion } from 'framer-motion';
-import { Shield, Mic } from 'lucide-react';
+import { Shield, Mic, Volume2, Square, Loader } from 'lucide-react';
 import clsx from 'clsx';
+import { formatMessageTime, formatMessageDateTime } from '../../utils/messages.js';
 
-export function ChatBubble({ message, role, timestamp, isLoading }) {
+export function ChatBubble({ message, role, timestamp, isLoading, isVoice, onSpeak, speaking, speakLoading }) {
   const isBot = role === 'assistant';
 
   if (isBot) {
@@ -33,10 +34,29 @@ export function ChatBubble({ message, role, timestamp, isLoading }) {
               </p>
             )}
           </div>
-          {timestamp && !isLoading && (
-            <span style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', paddingLeft: 4 }}>
-              {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
+          {!isLoading && (formatMessageTime(timestamp) || onSpeak) && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 4, paddingLeft: 4 }}>
+              {formatMessageTime(timestamp) && (
+                <time dateTime={String(timestamp)} title={formatMessageDateTime(timestamp)} style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
+                  {formatMessageTime(timestamp)}
+                </time>
+              )}
+              {onSpeak && message && (
+                <button
+                  type="button"
+                  onClick={onSpeak}
+                  aria-label={speaking ? 'Stop reading aloud' : 'Read this reply aloud'}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999,
+                    border: '1px solid var(--color-border)', background: speaking ? 'var(--color-primary-light)' : 'var(--color-surface)',
+                    color: 'var(--color-primary-dark)', fontSize: 11, fontWeight: 600, cursor: 'pointer',
+                  }}
+                >
+                  {speakLoading ? <Loader size={11} className="animate-spin" aria-hidden="true" /> : speaking ? <Square size={10} aria-hidden="true" /> : <Volume2 size={12} aria-hidden="true" />}
+                  {speaking ? 'Stop' : 'Listen'}
+                </button>
+              )}
+            </div>
           )}
         </div>
       </motion.div>
@@ -57,9 +77,16 @@ export function ChatBubble({ message, role, timestamp, isLoading }) {
         }}>
           <p style={{ fontSize: 15, fontFamily: 'var(--font-body)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{message}</p>
         </div>
-        {timestamp && (
-          <span style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4, display: 'block', textAlign: 'right', paddingRight: 4 }}>
-            {new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+        {(formatMessageTime(timestamp) || isVoice) && (
+          <span style={{ fontSize: 11, color: 'var(--color-text-muted)', marginTop: 4, display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 6, paddingRight: 4 }}>
+            {isVoice && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3, color: 'var(--color-primary-dark)', fontWeight: 600 }} title="Dictated by voice, reviewed before sending">
+                <Mic size={11} aria-hidden="true" /> Spoken
+              </span>
+            )}
+            {formatMessageTime(timestamp) && (
+              <time dateTime={String(timestamp)} title={formatMessageDateTime(timestamp)}>{formatMessageTime(timestamp)}</time>
+            )}
           </span>
         )}
       </div>

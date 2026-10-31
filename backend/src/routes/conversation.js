@@ -1,180 +1,77 @@
 import express from 'express';
 import multer from 'multer';
 import { v4 as uuidv4 } from 'uuid';
-import { getNextMessage } from '../agents/conversationAgent.js';
 import { extractFromConversation } from '../agents/extractionAgent.js';
 import { mapToMedDRA } from '../agents/mappingAgent.js';
 import { assessCompleteness } from '../agents/completenessAgent.js';
-import { triageMessage } from '../agents/triageAgent.js';
 import { generateICSR } from '../agents/reportAgent.js';
 import { saveConversation, updateConversation, getConversation, saveReport, updateDrugSignals, getReportsByConversationId } from '../services/firebaseService.js';
-import { transcribeAudio } from '../services/sarvamService.js';
+import { transcribeWithSarvam, isSarvamConfigured } from '../services/sarvamService.js';
+import { processUserTurn, withConversationLock, normalizeMessages, stampMessage } from '../services/conversationTurn.js';
+import { fallbackMessage, normalizeLanguage, resolveLanguage } from '../utils/languageSupport.js';
 import { WELCOME_MESSAGES } from '../prompts/conversationPrompts.js';
-import { mergeExtractedData, mergeNewFields } from '../utils/extractedData.js';
+import { mergeExtractedData } from '../utils/extractedData.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Merge newly extracted values into the existing structured report state so
-// earlier details are preserved and later corrections overwrite earlier ones.
-// ─────────────────────────────────────────────────────────────────────────────
 
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/conversation/start
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/start', async (req, res) => {
   try {
-    const { userType = 'patient', language = 'hi-IN', isAnonymous = true } = req.body;
+    const { userType = 'patient', isAnonymous = true } = req.body;
+    // Explicit conversation language; unknown values fall back to Hindi, the app default.
+    const language = resolveLanguage(req.body.language, 'hi-IN');
 
-    const welcomeMessage = WELCOME_MESSAGES[language] || WELCOME_MESSAGES['en-IN'];
+    const welcomeText = WELCOME_MESSAGES[language] || WELCOME_MESSAGES['en-IN'];
+    const welcome = stampMessage([], { role: 'assistant', content: welcomeText });
     const conversationId = uuidv4();
 
-    const conversationData = {
+    await saveConversation({
       id: conversationId,
       userId: req.user?.uid || 'anonymous',
-      messages: [{ role: 'assistant', content: welcomeMessage, timestamp: new Date().toISOString() }],
+      messages: [welcome],
       extractedData: null,
       language,
       userType,
       isAnonymous,
       status: 'active',
-    };
-
-    await saveConversation(conversationData);
-    res.json({ conversationId, welcomeMessage, language, userType });
+    });
+    res.json({ conversationId, welcomeMessage: welcomeText, welcome, language, userType });
   } catch (error) {
     console.error('[POST /start]', error);
     res.status(500).json({ error: 'Failed to start conversation', message: error.message });
   }
 });
 
+// Runs one patient turn under the per-conversation lock so concurrent requests
+// are processed in arrival order and can never overwrite each other's history.
+async function handleTurn({ conversationId, message, userType, language, inputMode }) {
+  return withConversationLock(conversationId, async () => {
+    const conversation = await getConversation(conversationId);
+    if (!conversation) return { status: 404 };
+    return { status: 200, body: await processUserTurn({ conversation, message, userType, language, inputMode }) };
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /api/conversation/message
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/message', async (req, res) => {
+  const { conversationId, message, userType = 'patient', language, inputMode } = req.body;
+  if (!conversationId || !message) {
+    return res.status(400).json({ error: 'conversationId and message are required' });
+  }
   try {
-    const { conversationId, message, userType = 'patient', language } = req.body;
-
-    if (!conversationId || !message) {
-      return res.status(400).json({ error: 'conversationId and message are required' });
-    }
-
-    // 1. Load conversation
-    const conversation = await getConversation(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    let currentLanguage = conversation.language;
-    if (language && language !== conversation.language) {
-      currentLanguage = language;
-      await updateConversation(conversationId, { language });
-    }
-
-    const history = conversation.messages || [];
-
-    // 2. Append user message
-    const userMsg = { role: 'user', content: message, timestamp: new Date().toISOString() };
-    const updatedMessages = [...history, userMsg];
-
-    // 3. Emergency triage — fast path on every message
-    const triage = await triageMessage(message);
-    if (triage.is_emergency) {
-      const emergencyMsg = {
-        role: 'assistant',
-        content: triage.emergency_message || 'This sounds like a medical emergency. Please call 112 immediately.',
-        timestamp: new Date().toISOString(),
-        isEmergency: true,
-      };
-      await updateConversation(conversationId, { messages: [...updatedMessages, emergencyMsg] });
-      return res.json({
-        message: triage.emergency_message,
-        isEmergency: true,
-        isReportReady: false,
-        triage,
-      });
-    }
-
-    // 4. Run extraction on EVERY user message for fresh context.
-    //    We run it in parallel with the conversation agent call to minimise latency.
-    let extractedData = conversation.extractedData || null;
-    const historyForExtraction = updatedMessages.map(m => ({ role: m.role, content: m.content }));
-
-    let freshExtraction = null;
-    try {
-      freshExtraction = await extractFromConversation(historyForExtraction);
-      extractedData = mergeExtractedData(extractedData, freshExtraction);
-    } catch (err) {
-      console.error('[Extraction] error:', err.message);
-      // Keep using previously extracted data — do not abort the conversation
-    }
-
-    // 5. Get next conversational reply from the LLM
-    const groqHistory = updatedMessages.map(m => ({ role: m.role, content: m.content }));
-    const agentResponse = await getNextMessage(groqHistory, userType, currentLanguage, extractedData);
-
-    // 6. Merge any new fields the LLM extracted into our structured data
-    if (agentResponse.newFields && Object.keys(agentResponse.newFields).length > 0) {
-      extractedData = mergeNewFields(extractedData, agentResponse.newFields);
-    }
-
-    // 7. Append bot reply to history
-    const botMsg = {
-      role: 'assistant',
-      content: agentResponse.message,
-      timestamp: new Date().toISOString(),
-    };
-    const finalMessages = [...updatedMessages, botMsg];
-
-    let completenessScore = null;
-    let meddraData = null;
-
-    // 8. Full pipeline when report is ready.
-    //    Once a conversation has reached "report_ready" at least once, keep
-    //    re-running this on every later turn too — otherwise a correction
-    //    made after that point (e.g. "actually it's once a day, not twice")
-    //    would update extractedData but leave the stale MedDRA mapping /
-    //    completeness score behind, breaking canonical-state sync.
-    const alreadyReady = conversation.status === 'report_ready';
-    if (agentResponse.isReportReady || alreadyReady) {
-      try {
-        const fullHistory = finalMessages.map(m => ({ role: m.role, content: m.content }));
-        const fullExtraction = await extractFromConversation(fullHistory);
-        extractedData = mergeExtractedData(extractedData, fullExtraction);
-        meddraData = await mapToMedDRA(extractedData);
-        const completeness = await assessCompleteness(extractedData);
-        completenessScore = completeness.completeness_score;
-
-        await updateConversation(conversationId, {
-          messages: finalMessages,
-          extractedData,
-          meddraData,
-          completenessScore,
-          status: 'report_ready',
-        });
-      } catch (err) {
-        console.error('[Report pipeline] error:', err.message);
-        await updateConversation(conversationId, { messages: finalMessages, extractedData });
-      }
-    } else {
-      await updateConversation(conversationId, { messages: finalMessages, extractedData });
-    }
-
-    // 9. Respond
-    res.json({
-      message: agentResponse.message,
-      isEmergency: false,
-      isReportReady: agentResponse.isReportReady || alreadyReady,
-      extractedData,
-      meddraData,
-      completenessScore,
-    });
+    const out = await handleTurn({ conversationId, message, userType, language, inputMode });
+    if (out.status === 404) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(out.body);
   } catch (error) {
     console.error('[POST /message]', error);
-    // Friendly error — do NOT restart conversation
+    // Friendly error in the patient's language — do NOT restart the conversation.
     res.status(500).json({
-      message: "I'm having a brief technical issue. Please try again in a moment — your conversation is still saved.",
+      message: fallbackMessage(resolveLanguage(language)),
       isEmergency: false,
       isReportReady: false,
       error: error.message,
@@ -183,90 +80,97 @@ router.post('/message', async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /api/conversation/voice
+// PUT /api/conversation/:conversationId/language
+// The user picked a different language in the selector. Persist it now so every
+// later reply, advisory and voice playback uses it. If the patient has not said
+// anything yet, the welcome message is re-written in the new language too;
+// once they have, earlier messages are history and are left as they are.
+// ─────────────────────────────────────────────────────────────────────────────
+router.put('/:conversationId/language', async (req, res) => {
+  const { conversationId } = req.params;
+  const language = normalizeLanguage(req.body?.language);
+  if (!language) return res.status(400).json({ error: 'A supported language is required' });
+  try {
+    const out = await withConversationLock(conversationId, async () => {
+      const conversation = await getConversation(conversationId);
+      if (!conversation) return { status: 404 };
+      const owner = conversation.userId;
+      if (owner && owner !== 'anonymous' && owner !== 'voice-line' && owner !== req.user?.uid) return { status: 404 };
+
+      const messages = normalizeMessages(conversation.messages);
+      const untouched = !messages.some((m) => m.role === 'user');
+      let welcome = null;
+      let nextMessages = messages;
+      if (untouched && messages[0]?.role === 'assistant') {
+        welcome = { ...messages[0], content: WELCOME_MESSAGES[language] || WELCOME_MESSAGES['en-IN'] };
+        nextMessages = [welcome, ...messages.slice(1)];
+      }
+      await updateConversation(conversationId, { language, ...(welcome && { messages: nextMessages }) });
+      return { status: 200, body: { language, welcome } };
+    });
+    if (out.status === 404) return res.status(404).json({ error: 'Conversation not found' });
+    res.json(out.body);
+  } catch (error) {
+    console.error('[PUT /:conversationId/language]', error);
+    res.status(500).json({ error: 'Failed to change language', message: error.message });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/conversation/transcribe
+// Speech-to-text ONLY. The chat composer shows the transcript for the user to
+// review and edit before anything is sent, so this never sends a message and
+// never substitutes a mock transcript — if Sarvam can't transcribe, the
+// client is told so and falls back to browser speech recognition or typing.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/transcribe', upload.single('audio'), async (req, res) => {
+  const audioBuffer = req.file?.buffer;
+  if (!audioBuffer?.length) return res.status(400).json({ error: 'No audio received.', code: 'no_audio' });
+  if (!isSarvamConfigured()) {
+    return res.status(503).json({ error: 'Voice transcription is not available on this server.', code: 'stt_not_configured' });
+  }
+  const language = req.body?.language || 'hi-IN';
+  try {
+    const result = await transcribeWithSarvam(audioBuffer, language, req.file.mimetype);
+    if (!result.transcript.trim()) {
+      return res.status(422).json({ error: "We couldn't make out any words. Please try again a little closer to the microphone.", code: 'empty_transcript' });
+    }
+    res.json({ transcript: result.transcript.trim(), language: result.language_detected, engine: 'sarvam', model: result.model });
+  } catch (error) {
+    console.error('[POST /transcribe]', error.response?.data || error.message);
+    res.status(502).json({ error: 'Voice transcription failed. Please try again or type instead.', code: 'stt_failed' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /api/conversation/voice  (transcribe + send in one step)
+// Same turn pipeline as typed messages. Uses real Sarvam transcription only —
+// a canned transcript is never passed off as what the patient said.
 // ─────────────────────────────────────────────────────────────────────────────
 router.post('/voice', upload.single('audio'), async (req, res) => {
+  const { conversationId } = req.body;
+  const audioBuffer = req.file?.buffer;
+  if (!audioBuffer?.length) return res.status(400).json({ error: 'No audio file provided', code: 'no_audio' });
+  if (!isSarvamConfigured()) {
+    return res.status(503).json({ error: 'Voice transcription is not available on this server.', code: 'stt_not_configured' });
+  }
   try {
-    const { conversationId, language = 'hi-IN' } = req.body;
-    const audioBuffer = req.file?.buffer;
+    const existing = await getConversation(conversationId);
+    if (!existing) return res.status(404).json({ error: 'Conversation not found' });
+    // Transcribe in the conversation's language unless the client explicitly selected another.
+    const language = resolveLanguage(req.body.language, existing.language);
 
-    if (!audioBuffer) {
-      return res.status(400).json({ error: 'No audio file provided' });
-    }
-
-    const transcription = await transcribeAudio(audioBuffer, language);
-    const transcript = transcription.transcript;
-
+    const transcription = await transcribeWithSarvam(audioBuffer, language, req.file.mimetype);
+    const transcript = transcription.transcript.trim();
     if (!transcript) {
-      return res.status(422).json({ error: 'Could not transcribe audio. Please try speaking more clearly.' });
+      return res.status(422).json({ error: 'Could not transcribe audio. Please try speaking more clearly.', code: 'empty_transcript' });
     }
 
-    const conversation = await getConversation(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ error: 'Conversation not found' });
-    }
-
-    let currentLanguage = conversation.language;
-    if (language && language !== conversation.language) {
-      currentLanguage = language;
-      await updateConversation(conversationId, { language });
-    }
-
-    const history = conversation.messages || [];
-    const triage = await triageMessage(transcript);
-
-    const userMsg = { role: 'user', content: transcript, timestamp: new Date().toISOString(), isVoice: true };
-    const updatedMessages = [...history, userMsg];
-
-    if (triage.is_emergency) {
-      const emergencyMsg = {
-        role: 'assistant',
-        content: triage.emergency_message || 'Please call 112 immediately.',
-        timestamp: new Date().toISOString(),
-        isEmergency: true,
-      };
-      await updateConversation(conversationId, { messages: [...updatedMessages, emergencyMsg] });
-      return res.json({
-        transcript,
-        message: triage.emergency_message,
-        isEmergency: true,
-        isReportReady: false,
-        languageDetected: transcription.language_detected,
-      });
-    }
-
-    // Extract fresh data on every voice message
-    let extractedData = conversation.extractedData || null;
-    try {
-      const freshExtraction = await extractFromConversation(updatedMessages.map(m => ({ role: m.role, content: m.content })));
-      extractedData = mergeExtractedData(extractedData, freshExtraction);
-    } catch (err) {
-      console.error('[Voice Extraction] error:', err.message);
-    }
-
-    const groqHistory = updatedMessages.map(m => ({ role: m.role, content: m.content }));
-    const agentResponse = await getNextMessage(groqHistory, conversation.userType, currentLanguage, extractedData);
-
-    if (agentResponse.newFields && Object.keys(agentResponse.newFields).length > 0) {
-      extractedData = mergeNewFields(extractedData, agentResponse.newFields);
-    }
-
-    const finalMessages = [
-      ...updatedMessages,
-      { role: 'assistant', content: agentResponse.message, timestamp: new Date().toISOString() },
-    ];
-
-    await updateConversation(conversationId, { messages: finalMessages, extractedData });
-
-    res.json({
-      transcript,
-      message: agentResponse.message,
-      isEmergency: false,
-      isReportReady: agentResponse.isReportReady,
-      languageDetected: transcription.language_detected,
-    });
+    const out = await handleTurn({ conversationId, message: transcript, userType: existing.userType, language, inputMode: 'voice' });
+    if (out.status === 404) return res.status(404).json({ error: 'Conversation not found' });
+    res.json({ transcript, languageDetected: transcription.language_detected, ...out.body });
   } catch (error) {
-    console.error('[POST /voice]', error);
+    console.error('[POST /voice]', error.response?.data || error);
     res.status(500).json({ error: 'Voice processing failed', message: error.message });
   }
 });
@@ -415,7 +319,13 @@ router.get('/history/:conversationId', async (req, res) => {
   try {
     const conversation = await getConversation(req.params.conversationId);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-    res.json(conversation);
+    // A saved report can be resumed only by whoever started it. Phone-channel
+    // conversations ('voice-line') are not tied to a browser identity.
+    const owner = conversation.userId;
+    if (owner && owner !== 'anonymous' && owner !== 'voice-line' && owner !== req.user?.uid) {
+      return res.status(404).json({ error: 'Conversation not found' });
+    }
+    res.json({ ...conversation, messages: normalizeMessages(conversation.messages) });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
