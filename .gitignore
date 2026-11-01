@@ -25,3 +25,10 @@ backend/bolna/
 *.md
 !README.md
 !**/README.md
+
+# Firebase CLI cache (created by `firebase deploy`)
+.firebase/
+
+# The example env file has no secrets and should be in the repo
+!.env.example
+!**/.env.example

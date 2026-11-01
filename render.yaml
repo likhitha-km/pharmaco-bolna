@@ -19,9 +19,9 @@ services:
       - key: NEBIUS_BASE_URL
         value: https://api.studio.nebius.ai/v1
       - key: NEBIUS_MODEL_FAST
-        value: Qwen/Qwen3-32B
+        value: Qwen/Qwen3-30B-A3B-Instruct-2507
       - key: NEBIUS_MODEL_SMART
-        value: Qwen/Qwen3-235B-A22B-Instruct
+        value: Qwen/Qwen3-235B-A22B-Instruct-2507
       - key: SARVAM_API_KEY
         sync: false
       - key: FIREBASE_SERVICE_ACCOUNT_JSON

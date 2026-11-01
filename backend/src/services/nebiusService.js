@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const NEBIUS_BASE_URL = process.env.NEBIUS_BASE_URL || 'https://api.studio.nebius.ai/v1';
-const MODEL_FAST = process.env.NEBIUS_MODEL_FAST || 'Qwen/Qwen3-32B';
-const MODEL_SMART = process.env.NEBIUS_MODEL_SMART || 'Qwen/Qwen3-235B-A22B-Instruct';
+const MODEL_FAST = process.env.NEBIUS_MODEL_FAST || 'Qwen/Qwen3-30B-A3B-Instruct-2507';
+const MODEL_SMART = process.env.NEBIUS_MODEL_SMART || 'Qwen/Qwen3-235B-A22B-Instruct-2507';
 const TIMEOUT_MS = Number(process.env.NEBIUS_TIMEOUT_MS) || 60000;
 
 function getAuthHeaders() {
